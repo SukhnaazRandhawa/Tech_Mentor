@@ -39,13 +39,29 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // In-memory user database (email -> user mapping)
 const userDatabase = new Map();
 
+// Helper function to clean up and format names properly
+function cleanupName(name) {
+  if (!name || name.trim() === '') {
+    return 'User';
+  }
+  const cleaned = name
+    .replace(/[0-9]/g, '')
+    .replace(/[^a-zA-Z\s]/g, '')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+  return cleaned || 'User';
+}
+
 // Helper: create or fetch user by email
 const createOrGetUserByEmail = (email, name = null) => {
   if (!userDatabase.has(email)) {
     const userId = 'user-' + Date.now();
     userDatabase.set(email, {
       _id: userId,
-      name: name || email.split('@')[0],
+      name: cleanupName(name || 'User'),
       email,
       skillLevels: {
         python: { level: 0, lastUpdated: new Date() },
@@ -150,7 +166,10 @@ app.post('/api/auth/register', (req, res) => {
 app.post('/api/auth/login', (req, res) => {
   console.log('Login attempt:', req.body);
   const { email } = req.body;
-  const user = createOrGetUserByEmail(email);
+  if (!userDatabase.has(email)) {
+    return res.status(400).json({ message: 'Invalid credentials - User not found' });
+  }
+  const user = userDatabase.get(email);
   currentUserEmail = email;
 
   res.json({
@@ -179,6 +198,28 @@ app.get('/api/auth/me', (req, res) => {
       email: user.email,
       skillLevels: user.skillLevels,
       statistics: user.statistics
+    }
+  });
+});
+
+// Update profile name (test mode)
+app.put('/api/auth/update-profile', (req, res) => {
+  console.log('Update profile request:', req.body);
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  const { name } = req.body;
+  const user = userDatabase.get(currentUserEmail);
+  if (name && name.trim() !== '') {
+    user.name = cleanupName(name);
+  }
+  res.json({
+    message: 'Profile updated successfully',
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      skillLevels: user.skillLevels
     }
   });
 });
