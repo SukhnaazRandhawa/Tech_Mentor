@@ -96,6 +96,21 @@ const Dashboard = () => {
     return skillData.level;
   };
 
+  const getSkillDisplayName = (skill) => {
+    // Convert skill names to display format
+    const displayNames = {
+      'python': 'Python',
+      'javascript': 'JavaScript',
+      'algorithms': 'Algorithms',
+      'data structures': 'Data Structures',
+      'system design': 'System Design',
+      'machine learning': 'Machine Learning',
+      'database design': 'Database Design',
+      'web development': 'Web Development'
+    };
+    return displayNames[skill] || skill.charAt(0).toUpperCase() + skill.slice(1);
+  };
+
   const getSkillColor = (level) => {
     if (level >= 8) return 'text-accent-600';
     if (level >= 6) return 'text-primary-600';
@@ -195,26 +210,41 @@ const Dashboard = () => {
                 View Details
               </Link>
             </div>
+            <p className="text-sm text-secondary-600 mb-4">
+              Track your learning journey across different CS concepts
+            </p>
             
             <div className="space-y-6">
-              {['python', 'javascript', 'algorithms', 'systemDesign'].map((skill) => (
-                <div key={skill} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-secondary-700 capitalize">
-                      {skill === 'systemDesign' ? 'System Design' : skill}
-                    </span>
-                    <span className={`text-sm font-semibold ${getSkillColor(getSkillLevel(skill))}`}>
-                      Level {getSkillLevel(skill)}/10
-                    </span>
+              {Object.keys(user?.skillLevels || {}).length > 0 ? (
+                Object.keys(user.skillLevels).map((skill) => (
+                  <div key={skill} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-secondary-700">
+                        {getSkillDisplayName(skill)}
+                      </span>
+                      <span className={`text-sm font-semibold ${getSkillColor(getSkillLevel(skill))}`}>
+                        Level {getSkillLevel(skill)}/10
+                      </span>
+                    </div>
+                    <div className="progress-bar">
+                      <div 
+                        className="progress-fill" 
+                        style={{ width: `${getSkillProgress(skill)}%` }}
+                      ></div>
+                    </div>
                   </div>
-                  <div className="progress-bar">
-                    <div 
-                      className="progress-fill" 
-                      style={{ width: `${getSkillProgress(skill)}%` }}
-                    ></div>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-secondary-500 mb-4">No skills added yet</p>
+                  <p className="text-sm text-secondary-400 mb-3">
+                    Start learning to see your progress here
+                  </p>
+                  <p className="text-xs text-secondary-400">
+                    💡 <Link to="/profile" className="text-primary-500 hover:text-primary-600 underline">Go to Profile</Link> to add skills you want to learn
+                  </p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>

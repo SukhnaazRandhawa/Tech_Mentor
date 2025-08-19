@@ -63,12 +63,7 @@ const createOrGetUserByEmail = (email, name = null) => {
       _id: userId,
       name: cleanupName(name || 'User'),
       email,
-      skillLevels: {
-        python: { level: 0, lastUpdated: new Date() },
-        javascript: { level: 0, lastUpdated: new Date() },
-        algorithms: { level: 0, lastUpdated: new Date() },
-        systemDesign: { level: 0, lastUpdated: new Date() }
-      },
+      skillLevels: {}, // Start with empty skills - will be added dynamically
       activityLog: [],
       statistics: {
         totalStudyTime: 0,
@@ -224,6 +219,49 @@ app.put('/api/auth/update-profile', (req, res) => {
   });
 });
 
+// Add endpoint to add/update a skill
+app.post('/api/skills/add', (req, res) => {
+  console.log('Add skill request:', req.body);
+  
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  
+  const { skillName, level = 0 } = req.body;
+  const user = userDatabase.get(currentUserEmail);
+  
+  if (!skillName || skillName.trim() === '') {
+    return res.status(400).json({ message: 'Skill name is required' });
+  }
+  
+  // Clean and normalize skill name
+  const normalizedSkill = skillName.toLowerCase().trim();
+  
+  // Add or update the skill
+  user.skillLevels[normalizedSkill] = {
+    level: Math.max(0, Math.min(10, level)), // Ensure level is between 0-10
+    lastUpdated: new Date()
+  };
+  
+  console.log(`Skill added/updated: ${normalizedSkill} (Level ${level}) for ${user.name}`);
+  
+  res.json({
+    message: 'Skill added/updated successfully',
+    skill: user.skillLevels[normalizedSkill],
+    skillName: normalizedSkill
+  });
+});
+
+// Get all skills for current user
+app.get('/api/skills', (req, res) => {
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  
+  const user = userDatabase.get(currentUserEmail);
+  res.json({ skills: user.skillLevels });
+});
+
 // Dynamic Dashboard API endpoints
 app.get('/api/dashboard/recent-activity', (req, res) => {
   console.log('Fetch recent activity request');
@@ -364,7 +402,17 @@ function calculateOverallProgress(skillLevels) {
 
 function generateTodaysGoal(user) {
   const skillLevels = user.skillLevels || {};
-  const skills = ['python', 'javascript', 'algorithms', 'systemDesign'];
+  const skills = Object.keys(skillLevels);
+  
+  if (skills.length === 0) {
+    return {
+      title: 'Start Your Learning Journey',
+      description: 'Choose your first skill to learn',
+      estimatedTime: 30,
+      skill: 'general',
+      targetLevel: 1
+    };
+  }
   
   // Find the skill with the lowest level
   let lowestSkill = skills[0];
@@ -378,39 +426,68 @@ function generateTodaysGoal(user) {
     }
   }
 
-  // Generate appropriate goal based on skill level
+  // Generate appropriate goal based on skill level and type
   const goalTemplates = {
-    python: {
+    'python': {
       0: { title: 'Start Python Basics', description: 'Learn variables and data types', time: 30 },
       1: { title: 'Python Control Flow', description: 'Master if statements and loops', time: 45 },
       2: { title: 'Python Functions', description: 'Learn to write and use functions', time: 45 },
       3: { title: 'Python Data Structures', description: 'Work with lists and dictionaries', time: 60 },
       default: { title: 'Advanced Python Concepts', description: 'Explore OOP and advanced topics', time: 60 }
     },
-    javascript: {
+    'javascript': {
       0: { title: 'JavaScript Fundamentals', description: 'Learn variables and basic syntax', time: 30 },
       1: { title: 'JavaScript Functions', description: 'Master function declarations', time: 45 },
       2: { title: 'DOM Manipulation', description: 'Learn to interact with web pages', time: 45 },
       3: { title: 'Async JavaScript', description: 'Understand promises and async/await', time: 60 },
       default: { title: 'Modern JavaScript', description: 'Explore ES6+ features', time: 60 }
     },
-    algorithms: {
+    'algorithms': {
       0: { title: 'Algorithm Basics', description: 'Understand time and space complexity', time: 30 },
       1: { title: 'Sorting Algorithms', description: 'Learn bubble sort and selection sort', time: 45 },
       2: { title: 'Search Algorithms', description: 'Master binary search techniques', time: 45 },
       3: { title: 'Data Structures', description: 'Work with arrays and linked lists', time: 60 },
       default: { title: 'Advanced Algorithms', description: 'Explore dynamic programming', time: 60 }
     },
-    systemDesign: {
+    'data structures': {
+      0: { title: 'Data Structure Basics', description: 'Learn arrays and linked lists', time: 30 },
+      1: { title: 'Stacks and Queues', description: 'Master LIFO and FIFO structures', time: 45 },
+      2: { title: 'Trees and Graphs', description: 'Understand hierarchical structures', time: 60 },
+      3: { title: 'Hash Tables', description: 'Learn key-value storage', time: 45 },
+      default: { title: 'Advanced Data Structures', description: 'Explore complex structures', time: 60 }
+    },
+    'system design': {
       0: { title: 'System Design Intro', description: 'Learn basic system components', time: 30 },
       1: { title: 'Scalability Concepts', description: 'Understand load balancing', time: 45 },
       2: { title: 'Database Design', description: 'Learn SQL vs NoSQL choices', time: 45 },
       3: { title: 'Caching Strategies', description: 'Explore Redis and CDNs', time: 60 },
       default: { title: 'Advanced System Design', description: 'Design complex systems', time: 90 }
+    },
+    'machine learning': {
+      0: { title: 'ML Fundamentals', description: 'Learn basic ML concepts', time: 30 },
+      1: { title: 'Supervised Learning', description: 'Understand classification and regression', time: 45 },
+      2: { title: 'Feature Engineering', description: 'Learn data preprocessing', time: 60 },
+      3: { title: 'Model Evaluation', description: 'Master metrics and validation', time: 45 },
+      default: { title: 'Advanced ML', description: 'Explore deep learning', time: 90 }
+    },
+    'database design': {
+      0: { title: 'Database Basics', description: 'Learn SQL fundamentals', time: 30 },
+      1: { title: 'Normalization', description: 'Understand database design principles', time: 45 },
+      2: { title: 'Indexing', description: 'Learn query optimization', time: 45 },
+      3: { title: 'Advanced Queries', description: 'Master complex SQL operations', time: 60 },
+      default: { title: 'Database Architecture', description: 'Design scalable databases', time: 90 }
+    },
+    'web development': {
+      0: { title: 'Web Fundamentals', description: 'Learn HTML and CSS basics', time: 30 },
+      1: { title: 'Frontend Development', description: 'Master JavaScript and frameworks', time: 60 },
+      2: { title: 'Backend Development', description: 'Learn server-side programming', time: 60 },
+      3: { title: 'Full Stack Integration', description: 'Connect frontend and backend', time: 90 },
+      default: { title: 'Advanced Web Dev', description: 'Explore modern web technologies', time: 90 }
     }
   };
 
-  const skillGoals = goalTemplates[lowestSkill] || goalTemplates.python;
+  // Try to find a template for the skill, fallback to a generic one
+  const skillGoals = goalTemplates[lowestSkill.toLowerCase()] || goalTemplates['python'];
   const goal = skillGoals[lowestLevel] || skillGoals.default;
 
   return {
@@ -429,8 +506,11 @@ app.get('/health', (req, res) => {
 
 // Test endpoints for adding data
 app.get('/api/test/populate-data', (req, res) => {
-  console.log('Populating test data...');
-  const user = getUser();
+  console.log('Populating test data for current user...');
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Please login first' });
+  }
+  const user = userDatabase.get(currentUserEmail);
   
   // Add some sample activities
   user.activityLog = [
@@ -454,12 +534,16 @@ app.get('/api/test/populate-data', (req, res) => {
     }
   ];
   
-  // Update skill levels
+  // Add dynamic skills based on common CS concepts
   user.skillLevels = {
-    python: { level: 7, lastUpdated: new Date() },
-    javascript: { level: 5, lastUpdated: new Date() },
-    algorithms: { level: 8, lastUpdated: new Date() },
-    systemDesign: { level: 3, lastUpdated: new Date() }
+    'python': { level: 7, lastUpdated: new Date() },
+    'javascript': { level: 5, lastUpdated: new Date() },
+    'algorithms': { level: 8, lastUpdated: new Date() },
+    'data structures': { level: 6, lastUpdated: new Date() },
+    'system design': { level: 3, lastUpdated: new Date() },
+    'machine learning': { level: 2, lastUpdated: new Date() },
+    'database design': { level: 4, lastUpdated: new Date() },
+    'web development': { level: 6, lastUpdated: new Date() }
   };
   
   // Update statistics
@@ -473,8 +557,10 @@ app.get('/api/test/populate-data', (req, res) => {
   };
   
   res.json({ 
-    message: 'Test data populated successfully!',
+    message: `Test data populated successfully for ${user.name}!`,
     user: {
+      name: user.name,
+      email: user.email,
       activities: user.activityLog.length,
       skills: Object.keys(user.skillLevels).length,
       stats: user.statistics
