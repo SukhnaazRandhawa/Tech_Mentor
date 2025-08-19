@@ -132,7 +132,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Index for better query performance
-userSchema.index({ email: 1 });
 userSchema.index({ 'skillLevels.level': 1 });
 userSchema.index({ 'statistics.lastActiveDate': 1 });
 

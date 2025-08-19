@@ -1,8 +1,16 @@
 import axios from 'axios';
 
 // Create axios instance with default config
+// In development, use proxy (relative URL), in production use full URL
+const baseURL = process.env.NODE_ENV === 'development' ? '/api' : (process.env.REACT_APP_API_URL || 'http://localhost:5001/api');
+console.log('🔍 API Base URL:', baseURL);
+console.log('🔍 Environment variables:', {
+  REACT_APP_API_URL: process.env.REACT_APP_API_URL,
+  NODE_ENV: process.env.NODE_ENV
+});
+
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5001/api',
+  baseURL: baseURL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

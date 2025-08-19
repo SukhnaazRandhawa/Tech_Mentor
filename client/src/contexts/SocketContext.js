@@ -19,7 +19,7 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      const newSocket = io(process.env.REACT_APP_SERVER_URL || 'http://localhost:5001', {
+      const newSocket = io(process.env.NODE_ENV === 'development' ? 'http://localhost:5001' : (process.env.REACT_APP_SERVER_URL || 'http://localhost:5001'), {
         auth: {
           token: localStorage.getItem('token')
         },
