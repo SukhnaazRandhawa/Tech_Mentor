@@ -81,7 +81,7 @@ cp env.example .env
 Edit `.env` with your configuration:
 ```env
 # Server Configuration
-PORT=5000
+PORT=5001
 NODE_ENV=development
 CLIENT_URL=http://localhost:3000
 
@@ -106,8 +106,8 @@ cd client
 
 Create `.env` file:
 ```env
-REACT_APP_API_URL=http://localhost:5000
-REACT_APP_SERVER_URL=http://localhost:5000
+REACT_APP_API_URL=http://localhost:5001
+REACT_APP_SERVER_URL=http://localhost:5001
 ```
 
 ### 4. Start MongoDB
@@ -130,8 +130,8 @@ npm run client    # Frontend only (port 3000)
 
 The application will be available at:
 - **Frontend**: http://localhost:3000
-- **Backend**: http://localhost:5000
-- **Health Check**: http://localhost:5000/health
+- **Backend**: http://localhost:5001
+- **Health Check**: http://localhost:5001/health
 
 ## 📁 Project Structure
 
