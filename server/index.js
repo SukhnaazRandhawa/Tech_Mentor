@@ -36,16 +36,17 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// In-memory user data store (replace with database later)
-const users = new Map();
+// In-memory user database (email -> user mapping)
+const userDatabase = new Map();
 
-// Helper function to get or create user
-const getUser = (userId = 'test-user-id') => {
-  if (!users.has(userId)) {
-    users.set(userId, {
+// Helper: create or fetch user by email
+const createOrGetUserByEmail = (email, name = null) => {
+  if (!userDatabase.has(email)) {
+    const userId = 'user-' + Date.now();
+    userDatabase.set(email, {
       _id: userId,
-      name: 'Test User',
-      email: 'test@example.com',
+      name: name || email.split('@')[0],
+      email,
       skillLevels: {
         python: { level: 0, lastUpdated: new Date() },
         javascript: { level: 0, lastUpdated: new Date() },
@@ -59,12 +60,16 @@ const getUser = (userId = 'test-user-id') => {
         challengesSolved: 0,
         interviewsCompleted: 0,
         streakDays: 0,
-        lastActiveDate: new Date()
+        lastActiveDate: new Date(),
+        jobPrepsCreated: 0
       }
     });
   }
-  return users.get(userId);
+  return userDatabase.get(email);
 };
+
+// Track current logged-in user (test mode substitute for JWT)
+let currentUserEmail = null;
 
 // Database connection - Temporarily commented out for testing
 // mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/codementor-ai')
@@ -120,20 +125,23 @@ io.on('connection', (socket) => {
 // Temporary test route
 app.post('/api/auth/register', (req, res) => {
   console.log('Registration attempt:', req.body);
-  
-  // Create new user
-  const userId = 'user-' + Date.now();
-  const newUser = getUser(userId);
-  newUser.name = req.body.name;
-  newUser.email = req.body.email;
-  
+  const { name, email } = req.body;
+
+  // Prevent duplicate registration for same email
+  if (userDatabase.has(email)) {
+    return res.status(400).json({ message: 'User with this email already exists' });
+  }
+
+  const newUser = createOrGetUserByEmail(email, name);
+  currentUserEmail = email;
+
   res.json({
     message: 'Registration successful (test mode)',
     token: 'test-token-123',
     user: {
-      _id: userId,
-      name: req.body.name,
-      email: req.body.email,
+      _id: newUser._id,
+      name: newUser.name,
+      email: newUser.email,
       skillLevels: newUser.skillLevels
     }
   });
@@ -141,16 +149,17 @@ app.post('/api/auth/register', (req, res) => {
 
 app.post('/api/auth/login', (req, res) => {
   console.log('Login attempt:', req.body);
-  const user = getUser();
-  user.email = req.body.email;
-  
+  const { email } = req.body;
+  const user = createOrGetUserByEmail(email);
+  currentUserEmail = email;
+
   res.json({
     message: 'Login successful (test mode)',
     token: 'test-token-123',
     user: {
       _id: user._id,
       name: user.name,
-      email: req.body.email,
+      email: user.email,
       skillLevels: user.skillLevels
     }
   });
@@ -158,7 +167,10 @@ app.post('/api/auth/login', (req, res) => {
 
 app.get('/api/auth/me', (req, res) => {
   console.log('Fetch user profile request');
-  const user = getUser();
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  const user = userDatabase.get(currentUserEmail);
   
   res.json({
     user: {
@@ -174,9 +186,8 @@ app.get('/api/auth/me', (req, res) => {
 // Dynamic Dashboard API endpoints
 app.get('/api/dashboard/recent-activity', (req, res) => {
   console.log('Fetch recent activity request');
-  const user = getUser();
-  
-  // Return actual user activity or empty array for new users
+  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
+  if (!user) return res.json({ activities: [] });
   const activities = user.activityLog.slice(-5).reverse().map(activity => ({
     id: activity.id || Date.now(),
     type: activity.type,
@@ -185,41 +196,40 @@ app.get('/api/dashboard/recent-activity', (req, res) => {
     icon: getActivityIcon(activity.type),
     color: getActivityColor(activity.type)
   }));
-  
-  res.json({
-    activities: activities.length > 0 ? activities : []
-  });
+  res.json({ activities: activities.length > 0 ? activities : [] });
 });
 
 app.get('/api/dashboard/today-goal', (req, res) => {
   console.log('Fetch today goal request');
-  const user = getUser();
-  
-  // Generate dynamic goal based on user's skill levels
-  const goal = generateTodaysGoal(user);
-  
+  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
+  const goal = user ? generateTodaysGoal(user) : {
+    title: 'Start Python Basics',
+    description: 'Learn variables and data types',
+    estimatedTime: 30
+  };
   res.json({ goal });
 });
 
 app.get('/api/dashboard/stats', (req, res) => {
   console.log('Fetch dashboard stats request');
-  const user = getUser();
-  
-  // Calculate real stats from user data
+  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
+  if (!user) {
+    return res.json({ stats: { lessonsCompleted: 0, overallProgress: 0, mockInterviews: 0, jobPreps: 0 } });
+  }
   const stats = {
     lessonsCompleted: user.statistics.lessonsCompleted || 0,
     overallProgress: calculateOverallProgress(user.skillLevels),
     mockInterviews: user.statistics.interviewsCompleted || 0,
     jobPreps: user.statistics.jobPrepsCreated || 0
   };
-  
   res.json({ stats });
 });
 
 // Add activity endpoint for testing
 app.post('/api/dashboard/add-activity', (req, res) => {
   console.log('Add activity request:', req.body);
-  const user = getUser();
+  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
+  if (!user) return res.status(401).json({ message: 'Please login first' });
   const { type, title } = req.body;
   
   // Add activity to user's log
@@ -249,7 +259,8 @@ app.post('/api/dashboard/add-activity', (req, res) => {
 // Update skill endpoint for testing
 app.post('/api/dashboard/update-skill', (req, res) => {
   console.log('Update skill request:', req.body);
-  const user = getUser();
+  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
+  if (!user) return res.status(401).json({ message: 'Please login first' });
   const { skill, level } = req.body;
   
   if (user.skillLevels[skill]) {
