@@ -16,40 +16,72 @@ import { useAuth } from '../contexts/AuthContext';
 const Dashboard = () => {
   const { user } = useAuth();
   const [recentActivity, setRecentActivity] = useState([]);
+  const [todayGoal, setTodayGoal] = useState(null);
+  const [stats, setStats] = useState({});
   const [isLoading, setIsLoading] = useState(true);
 
-  // Mock data - replace with actual API calls
+  // Fetch dashboard data from backend
   useEffect(() => {
-    // Simulate loading
-    setTimeout(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Fetch recent activity
+        const activityResponse = await fetch('/api/dashboard/recent-activity');
+        if (activityResponse.ok) {
+          const activityData = await activityResponse.json();
+          setRecentActivity(activityData.activities);
+        }
+        
+        // Fetch today's goal
+        const goalResponse = await fetch('/api/dashboard/today-goal');
+        if (goalResponse.ok) {
+          const goalData = await goalResponse.json();
+          setTodayGoal(goalData.goal);
+        }
+        
+        // Fetch statistics
+        const statsResponse = await fetch('/api/dashboard/stats');
+        if (statsResponse.ok) {
+          const statsData = await statsResponse.json();
+          setStats(statsData.stats);
+        }
+        
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        // Fallback to default data if API fails
+        setDefaultData();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const setDefaultData = () => {
       setRecentActivity([
         {
           id: 1,
           type: 'lesson',
-          title: 'Completed Binary Trees lesson',
-          timestamp: '2 hours ago',
+          title: 'No recent activity',
+          timestamp: 'Start learning to see activity here',
           icon: CheckCircle,
-          color: 'text-accent-600'
-        },
-        {
-          id: 2,
-          type: 'challenge',
-          title: 'Solved 5 coding challenges',
-          timestamp: '1 day ago',
-          icon: CheckCircle,
-          color: 'text-accent-600'
-        },
-        {
-          id: 3,
-          type: 'job',
-          title: 'Analyzed Software Engineer job at Google',
-          timestamp: '3 days ago',
-          icon: Briefcase,
-          color: 'text-primary-600'
+          color: 'text-secondary-500'
         }
       ]);
-      setIsLoading(false);
-    }, 1000);
+      setTodayGoal({
+        title: 'Set your first learning goal',
+        description: 'Click on "Set Goal" to create your first learning objective',
+        estimatedTime: 30,
+        isDefault: true
+      });
+      setStats({
+        lessonsCompleted: 0,
+        overallProgress: 0,
+        mockInterviews: 0,
+        jobPreps: 0
+      });
+    };
+
+    fetchDashboardData();
   }, []);
 
   const getSkillProgress = (skill) => {
@@ -189,25 +221,48 @@ const Dashboard = () => {
 
         {/* Today's Goal */}
         <div className="card">
-          <div className="flex items-center mb-4">
-            <Target className="h-5 w-5 text-primary-600 mr-2" />
-            <h3 className="text-lg font-semibold text-secondary-900">Today's Goal</h3>
-          </div>
-          
-          <div className="bg-primary-50 rounded-lg p-4 mb-4">
-            <p className="text-primary-800 font-medium">
-              Complete Django Models lesson
-            </p>
-            <div className="flex items-center mt-2 text-sm text-primary-600">
-              <Clock className="h-4 w-4 mr-1" />
-              <span>Estimated: 45 minutes</span>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center">
+              <Target className="h-5 w-5 text-primary-600 mr-2" />
+              <h3 className="text-lg font-semibold text-secondary-900">Today's Goal</h3>
             </div>
+            {!todayGoal?.isDefault && (
+              <button className="text-sm text-primary-600 hover:text-primary-700">
+                Edit
+              </button>
+            )}
           </div>
           
-          <Link to="/tutoring" className="btn-primary w-full flex items-center justify-center">
-            <Play className="h-4 w-4 mr-2" />
-            Start Learning
-          </Link>
+          {todayGoal ? (
+            <>
+              <div className="bg-primary-50 rounded-lg p-4 mb-4">
+                <p className="text-primary-800 font-medium">
+                  {todayGoal.title}
+                </p>
+                {todayGoal.description && (
+                  <p className="text-primary-600 text-sm mt-1">
+                    {todayGoal.description}
+                  </p>
+                )}
+                <div className="flex items-center mt-2 text-sm text-primary-600">
+                  <Clock className="h-4 w-4 mr-1" />
+                  <span>Estimated: {todayGoal.estimatedTime} minutes</span>
+                </div>
+              </div>
+              
+              <Link to="/tutoring" className="btn-primary w-full flex items-center justify-center">
+                <Play className="h-4 w-4 mr-2" />
+                Start Learning
+              </Link>
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-secondary-500 mb-4">No goal set for today</p>
+              <button className="btn-primary">
+                Set Today's Goal
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -223,7 +278,23 @@ const Dashboard = () => {
           
           <div className="space-y-4">
             {recentActivity.map((activity) => {
-              const Icon = activity.icon;
+              // Map icon names to icon components
+              const getIconComponent = (iconName) => {
+                switch (iconName) {
+                  case 'CheckCircle':
+                    return CheckCircle;
+                  case 'Briefcase':
+                    return Briefcase;
+                  case 'BookOpen':
+                    return BookOpen;
+                  case 'MessageSquare':
+                    return MessageSquare;
+                  default:
+                    return CheckCircle;
+                }
+              };
+              
+              const Icon = getIconComponent(activity.icon);
               return (
                 <div key={activity.id} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-secondary-50 transition-colors">
                   <div className={`p-2 rounded-full bg-secondary-100`}>
@@ -246,7 +317,9 @@ const Dashboard = () => {
           <div className="flex items-center justify-center w-12 h-12 bg-primary-100 rounded-lg mx-auto mb-3">
             <BookOpen className="h-6 w-6 text-primary-600" />
           </div>
-          <h3 className="text-2xl font-bold text-secondary-900 mb-1">12</h3>
+          <h3 className="text-2xl font-bold text-secondary-900 mb-1">
+            {stats.lessonsCompleted || 0}
+          </h3>
           <p className="text-sm text-secondary-600">Lessons Completed</p>
         </div>
         
@@ -254,7 +327,9 @@ const Dashboard = () => {
           <div className="flex items-center justify-center w-12 h-12 bg-accent-100 rounded-lg mx-auto mb-3">
             <TrendingUp className="h-6 w-6 text-accent-600" />
           </div>
-          <h3 className="text-2xl font-bold text-secondary-900 mb-1">85%</h3>
+          <h3 className="text-2xl font-bold text-secondary-900 mb-1">
+            {stats.overallProgress || 0}%
+          </h3>
           <p className="text-sm text-secondary-600">Overall Progress</p>
         </div>
         
@@ -262,7 +337,9 @@ const Dashboard = () => {
           <div className="flex items-center justify-center w-12 h-12 bg-secondary-100 rounded-lg mx-auto mb-3">
             <MessageSquare className="h-6 w-6 text-secondary-600" />
           </div>
-          <h3 className="text-2xl font-bold text-secondary-900 mb-1">8</h3>
+          <h3 className="text-2xl font-bold text-secondary-900 mb-1">
+            {stats.mockInterviews || 0}
+          </h3>
           <p className="text-sm text-secondary-600">Mock Interviews</p>
         </div>
         
@@ -270,7 +347,9 @@ const Dashboard = () => {
           <div className="flex items-center justify-center w-12 h-12 bg-yellow-100 rounded-lg mx-auto mb-3">
             <Briefcase className="h-6 w-6 text-yellow-600" />
           </div>
-          <h3 className="text-2xl font-bold text-secondary-900 mb-1">3</h3>
+          <h3 className="text-2xl font-bold text-secondary-900 mb-1">
+            {stats.jobPreps || 0}
+          </h3>
           <p className="text-sm text-secondary-600">Job Preps</p>
         </div>
       </div>

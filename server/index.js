@@ -36,6 +36,36 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// In-memory user data store (replace with database later)
+const users = new Map();
+
+// Helper function to get or create user
+const getUser = (userId = 'test-user-id') => {
+  if (!users.has(userId)) {
+    users.set(userId, {
+      _id: userId,
+      name: 'Test User',
+      email: 'test@example.com',
+      skillLevels: {
+        python: { level: 0, lastUpdated: new Date() },
+        javascript: { level: 0, lastUpdated: new Date() },
+        algorithms: { level: 0, lastUpdated: new Date() },
+        systemDesign: { level: 0, lastUpdated: new Date() }
+      },
+      activityLog: [],
+      statistics: {
+        totalStudyTime: 0,
+        lessonsCompleted: 0,
+        challengesSolved: 0,
+        interviewsCompleted: 0,
+        streakDays: 0,
+        lastActiveDate: new Date()
+      }
+    });
+  }
+  return users.get(userId);
+};
+
 // Database connection - Temporarily commented out for testing
 // mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/codementor-ai')
 // .then(() => console.log('✅ Connected to MongoDB'))
@@ -90,58 +120,314 @@ io.on('connection', (socket) => {
 // Temporary test route
 app.post('/api/auth/register', (req, res) => {
   console.log('Registration attempt:', req.body);
+  
+  // Create new user
+  const userId = 'user-' + Date.now();
+  const newUser = getUser(userId);
+  newUser.name = req.body.name;
+  newUser.email = req.body.email;
+  
   res.json({
     message: 'Registration successful (test mode)',
     token: 'test-token-123',
     user: {
-      _id: 'test-user-id',
+      _id: userId,
       name: req.body.name,
-      email: req.body.email
+      email: req.body.email,
+      skillLevels: newUser.skillLevels
     }
   });
 });
 
 app.post('/api/auth/login', (req, res) => {
   console.log('Login attempt:', req.body);
+  const user = getUser();
+  user.email = req.body.email;
+  
   res.json({
     message: 'Login successful (test mode)',
     token: 'test-token-123',
     user: {
-      _id: 'test-user-id',
-      name: 'Test User',
-      email: req.body.email
+      _id: user._id,
+      name: user.name,
+      email: req.body.email,
+      skillLevels: user.skillLevels
     }
   });
 });
 
 app.get('/api/auth/me', (req, res) => {
   console.log('Fetch user profile request');
+  const user = getUser();
+  
   res.json({
     user: {
-      _id: 'test-user-id',
-      name: 'Test User',
-      email: 'test@example.com',
-      skillLevels: {
-        python: { level: 7, lastUpdated: new Date() },
-        javascript: { level: 5, lastUpdated: new Date() },
-        algorithms: { level: 8, lastUpdated: new Date() },
-        systemDesign: { level: 3, lastUpdated: new Date() }
-      },
-      statistics: {
-        totalStudyTime: 120,
-        lessonsCompleted: 12,
-        challengesSolved: 25,
-        interviewsCompleted: 3,
-        streakDays: 5,
-        lastActiveDate: new Date()
-      }
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      skillLevels: user.skillLevels,
+      statistics: user.statistics
     }
   });
 });
 
+// Dynamic Dashboard API endpoints
+app.get('/api/dashboard/recent-activity', (req, res) => {
+  console.log('Fetch recent activity request');
+  const user = getUser();
+  
+  // Return actual user activity or empty array for new users
+  const activities = user.activityLog.slice(-5).reverse().map(activity => ({
+    id: activity.id || Date.now(),
+    type: activity.type,
+    title: activity.title,
+    timestamp: formatTimestamp(activity.timestamp),
+    icon: getActivityIcon(activity.type),
+    color: getActivityColor(activity.type)
+  }));
+  
+  res.json({
+    activities: activities.length > 0 ? activities : []
+  });
+});
+
+app.get('/api/dashboard/today-goal', (req, res) => {
+  console.log('Fetch today goal request');
+  const user = getUser();
+  
+  // Generate dynamic goal based on user's skill levels
+  const goal = generateTodaysGoal(user);
+  
+  res.json({ goal });
+});
+
+app.get('/api/dashboard/stats', (req, res) => {
+  console.log('Fetch dashboard stats request');
+  const user = getUser();
+  
+  // Calculate real stats from user data
+  const stats = {
+    lessonsCompleted: user.statistics.lessonsCompleted || 0,
+    overallProgress: calculateOverallProgress(user.skillLevels),
+    mockInterviews: user.statistics.interviewsCompleted || 0,
+    jobPreps: user.statistics.jobPrepsCreated || 0
+  };
+  
+  res.json({ stats });
+});
+
+// Add activity endpoint for testing
+app.post('/api/dashboard/add-activity', (req, res) => {
+  console.log('Add activity request:', req.body);
+  const user = getUser();
+  const { type, title } = req.body;
+  
+  // Add activity to user's log
+  user.activityLog.push({
+    id: Date.now(),
+    type,
+    title,
+    timestamp: new Date()
+  });
+  
+  // Update relevant statistics
+  switch (type) {
+    case 'lesson':
+      user.statistics.lessonsCompleted = (user.statistics.lessonsCompleted || 0) + 1;
+      break;
+    case 'challenge':
+      user.statistics.challengesSolved = (user.statistics.challengesSolved || 0) + 1;
+      break;
+    case 'interview':
+      user.statistics.interviewsCompleted = (user.statistics.interviewsCompleted || 0) + 1;
+      break;
+  }
+  
+  res.json({ message: 'Activity added successfully' });
+});
+
+// Update skill endpoint for testing
+app.post('/api/dashboard/update-skill', (req, res) => {
+  console.log('Update skill request:', req.body);
+  const user = getUser();
+  const { skill, level } = req.body;
+  
+  if (user.skillLevels[skill]) {
+    user.skillLevels[skill].level = Math.min(Math.max(level, 0), 10);
+    user.skillLevels[skill].lastUpdated = new Date();
+  }
+  
+  res.json({ 
+    message: 'Skill updated successfully',
+    skillLevels: user.skillLevels 
+  });
+});
+
+// Helper functions
+function formatTimestamp(date) {
+  const now = new Date();
+  const activityDate = new Date(date);
+  const diffInMinutes = Math.floor((now - activityDate) / (1000 * 60));
+
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} minutes ago`;
+  } else if (diffInMinutes < 1440) { // 24 hours
+    const hours = Math.floor(diffInMinutes / 60);
+    return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  } else {
+    const days = Math.floor(diffInMinutes / 1440);
+    return `${days} day${days > 1 ? 's' : ''} ago`;
+  }
+}
+
+function getActivityIcon(type) {
+  const iconMap = {
+    'lesson': 'CheckCircle',
+    'challenge': 'CheckCircle',
+    'interview': 'MessageSquare',
+    'job_prep': 'Briefcase',
+    'skill_update': 'TrendingUp'
+  };
+  return iconMap[type] || 'CheckCircle';
+}
+
+function getActivityColor(type) {
+  const colorMap = {
+    'lesson': 'text-accent-600',
+    'challenge': 'text-accent-600', 
+    'interview': 'text-secondary-600',
+    'job_prep': 'text-primary-600',
+    'skill_update': 'text-yellow-600'
+  };
+  return colorMap[type] || 'text-accent-600';
+}
+
+function calculateOverallProgress(skillLevels) {
+  const levels = Object.values(skillLevels || {});
+  if (levels.length === 0) return 0;
+  
+  const totalLevel = levels.reduce((sum, skill) => sum + skill.level, 0);
+  return Math.round((totalLevel / (levels.length * 10)) * 100);
+}
+
+function generateTodaysGoal(user) {
+  const skillLevels = user.skillLevels || {};
+  const skills = ['python', 'javascript', 'algorithms', 'systemDesign'];
+  
+  // Find the skill with the lowest level
+  let lowestSkill = skills[0];
+  let lowestLevel = skillLevels[lowestSkill]?.level || 0;
+  
+  for (const skill of skills) {
+    const level = skillLevels[skill]?.level || 0;
+    if (level < lowestLevel) {
+      lowestLevel = level;
+      lowestSkill = skill;
+    }
+  }
+
+  // Generate appropriate goal based on skill level
+  const goalTemplates = {
+    python: {
+      0: { title: 'Start Python Basics', description: 'Learn variables and data types', time: 30 },
+      1: { title: 'Python Control Flow', description: 'Master if statements and loops', time: 45 },
+      2: { title: 'Python Functions', description: 'Learn to write and use functions', time: 45 },
+      3: { title: 'Python Data Structures', description: 'Work with lists and dictionaries', time: 60 },
+      default: { title: 'Advanced Python Concepts', description: 'Explore OOP and advanced topics', time: 60 }
+    },
+    javascript: {
+      0: { title: 'JavaScript Fundamentals', description: 'Learn variables and basic syntax', time: 30 },
+      1: { title: 'JavaScript Functions', description: 'Master function declarations', time: 45 },
+      2: { title: 'DOM Manipulation', description: 'Learn to interact with web pages', time: 45 },
+      3: { title: 'Async JavaScript', description: 'Understand promises and async/await', time: 60 },
+      default: { title: 'Modern JavaScript', description: 'Explore ES6+ features', time: 60 }
+    },
+    algorithms: {
+      0: { title: 'Algorithm Basics', description: 'Understand time and space complexity', time: 30 },
+      1: { title: 'Sorting Algorithms', description: 'Learn bubble sort and selection sort', time: 45 },
+      2: { title: 'Search Algorithms', description: 'Master binary search techniques', time: 45 },
+      3: { title: 'Data Structures', description: 'Work with arrays and linked lists', time: 60 },
+      default: { title: 'Advanced Algorithms', description: 'Explore dynamic programming', time: 60 }
+    },
+    systemDesign: {
+      0: { title: 'System Design Intro', description: 'Learn basic system components', time: 30 },
+      1: { title: 'Scalability Concepts', description: 'Understand load balancing', time: 45 },
+      2: { title: 'Database Design', description: 'Learn SQL vs NoSQL choices', time: 45 },
+      3: { title: 'Caching Strategies', description: 'Explore Redis and CDNs', time: 60 },
+      default: { title: 'Advanced System Design', description: 'Design complex systems', time: 90 }
+    }
+  };
+
+  const skillGoals = goalTemplates[lowestSkill] || goalTemplates.python;
+  const goal = skillGoals[lowestLevel] || skillGoals.default;
+
+  return {
+    title: goal.title,
+    description: goal.description,
+    estimatedTime: goal.time,
+    skill: lowestSkill,
+    targetLevel: lowestLevel + 1
+  };
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Test endpoints for adding data
+app.get('/api/test/populate-data', (req, res) => {
+  console.log('Populating test data...');
+  const user = getUser();
+  
+  // Add some sample activities
+  user.activityLog = [
+    {
+      id: 1,
+      type: 'lesson',
+      title: 'Completed Binary Trees lesson',
+      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000) // 2 hours ago
+    },
+    {
+      id: 2,
+      type: 'challenge',
+      title: 'Solved 5 coding challenges',
+      timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000) // 1 day ago
+    },
+    {
+      id: 3,
+      type: 'job_prep',
+      title: 'Analyzed Software Engineer job at Google',
+      timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) // 3 days ago
+    }
+  ];
+  
+  // Update skill levels
+  user.skillLevels = {
+    python: { level: 7, lastUpdated: new Date() },
+    javascript: { level: 5, lastUpdated: new Date() },
+    algorithms: { level: 8, lastUpdated: new Date() },
+    systemDesign: { level: 3, lastUpdated: new Date() }
+  };
+  
+  // Update statistics
+  user.statistics = {
+    lessonsCompleted: 12,
+    challengesSolved: 25,
+    interviewsCompleted: 8,
+    jobPrepsCreated: 3,
+    streakDays: 5,
+    lastActiveDate: new Date()
+  };
+  
+  res.json({ 
+    message: 'Test data populated successfully!',
+    user: {
+      activities: user.activityLog.length,
+      skills: Object.keys(user.skillLevels).length,
+      stats: user.statistics
+    }
+  });
 });
 
 // Error handling middleware
@@ -163,6 +449,7 @@ const PORT = process.env.PORT || 5001;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Test data endpoint: http://localhost:${PORT}/api/test/populate-data`);
 });
 
 // Graceful shutdown
