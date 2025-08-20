@@ -912,18 +912,33 @@ async function executeCodeLocally(code, language) {
           // Remove ANSI color codes
           cleanError = cleanError.replace(/\x1b\[[0-9;]*m/g, '');
           
-          // Remove "File "<string>", line X:" prefix
-          cleanError = cleanError.replace(/File "<string>", line \d+: /g, '');
-          
-          // Remove the "^" pointer line and keep only the error message
+          // Format the error to look clean and readable
           const lines = cleanError.split('\n');
-          const errorLines = lines.filter(line => 
-            !line.trim().startsWith('^') && 
-            line.trim() !== '' && 
-            !line.includes('File "<string>"')
-          );
+          const formattedLines = lines.map(line => {
+            // Keep the traceback header
+            if (line.includes('Traceback (most recent call last):')) {
+              return line;
+            }
+            
+            // Format the file and line info to look clean
+            if (line.includes('File "<string>"')) {
+              return '  File "<string>", line 1';
+            }
+            
+            // Keep the code line with proper indentation
+            if (line.trim() && !line.trim().startsWith('^') && !line.includes('File "<string>"')) {
+              return '    ' + line.trim();
+            }
+            
+            // Keep the error pointer line (the one with ^^^^)
+            if (line.trim().startsWith('^')) {
+              return '    ' + line.trim();
+            }
+            
+            return '';
+          }).filter(line => line.trim() !== '');
           
-          error += errorLines.join('\n');
+          error += formattedLines.join('\n');
         });
 
         pythonProcess.on('close', (exitCode) => {
