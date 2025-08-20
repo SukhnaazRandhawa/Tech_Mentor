@@ -906,7 +906,24 @@ async function executeCodeLocally(code, language) {
         });
 
         pythonProcess.stderr.on('data', (data) => {
-          error += data.toString();
+          // Clean up Python error output to make it user-friendly
+          let cleanError = data.toString();
+          
+          // Remove ANSI color codes
+          cleanError = cleanError.replace(/\x1b\[[0-9;]*m/g, '');
+          
+          // Remove "File "<string>", line X:" prefix
+          cleanError = cleanError.replace(/File "<string>", line \d+: /g, '');
+          
+          // Remove the "^" pointer line and keep only the error message
+          const lines = cleanError.split('\n');
+          const errorLines = lines.filter(line => 
+            !line.trim().startsWith('^') && 
+            line.trim() !== '' && 
+            !line.includes('File "<string>"')
+          );
+          
+          error += errorLines.join('\n');
         });
 
         pythonProcess.on('close', (exitCode) => {
