@@ -128,6 +128,12 @@ helloWorld();`
           hints: ['Ask questions', 'Share your thoughts', 'Try coding']
         };
         setConversation([welcomeMessage]);
+        
+        // Update session topic to match what user actually selected
+        setSession(prev => ({
+          ...prev,
+          topic: topic.trim()
+        }));
       }
     } catch (error) {
       console.error('Error starting session:', error);

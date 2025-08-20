@@ -94,10 +94,12 @@ JWT_SECRET=your-super-secret-jwt-key-here
 # OpenAI Configuration
 OPENAI_API_KEY=your-openai-api-key-here
 
-# Judge0 API (for code execution)
+# OpenAI API Key (for AI tutoring)
+OPENAI_API_KEY=your-openai-api-key-here
+
+# Judge0 API Key (for code execution)
 JUDGE0_API_KEY=your-judge0-api-key-here
 JUDGE0_API_URL=https://judge0-ce.p.rapidapi.com
-```
 
 #### Frontend (.env file in client directory)
 ```bash

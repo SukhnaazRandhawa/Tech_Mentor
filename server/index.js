@@ -631,88 +631,290 @@ function formatTimestamp(date) {
 
 // AI Tutoring Helper Functions
 async function generateTutoringResponse(studentMessage, codeSnippet, skillLevel, user) {
-  // Mock AI response for now (will be replaced with OpenAI API)
-  // In production, this would call OpenAI with a carefully crafted prompt
+  try {
+    // Check if OpenAI API key is available
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    
+    if (!openaiApiKey) {
+      // Fallback to smart mock responses when OpenAI is not configured
+      return generateSmartMockResponse(studentMessage, codeSnippet, skillLevel, user);
+    }
+    
+    // Real OpenAI API call
+    const prompt = createTutoringPrompt(studentMessage, codeSnippet, skillLevel, user);
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a Socratic computer science tutor. Use guided discovery, ask questions, and help students learn through exploration. Be encouraging and patient.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 300,
+        temperature: 0.7
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const aiMessage = data.choices[0].message.content;
+    
+    // Parse the AI response to extract concepts and hints
+    const concepts = extractConcepts(aiMessage);
+    const hints = extractHints(aiMessage);
+    
+    return {
+      message: aiMessage,
+      concepts: concepts,
+      hints: hints
+    };
+    
+  } catch (error) {
+    console.error('OpenAI API error, falling back to mock response:', error);
+    return generateSmartMockResponse(studentMessage, codeSnippet, skillLevel, user);
+  }
+}
+
+// Smart mock response generator (fallback when OpenAI is not available)
+function generateSmartMockResponse(studentMessage, codeSnippet, skillLevel, user) {
+  const message = studentMessage.toLowerCase();
   
-  const responses = {
+  // More intelligent keyword matching
+  if (message.includes('hello') || message.includes('hi')) {
+    return {
+      message: `Hello! I am excited to help you learn ${user?.skillLevels?.python ? 'Python' : 'programming'}! What specific concept would you like to explore today?`,
+      concepts: ['greeting', 'session start'],
+      hints: ['Ask about specific programming concepts', 'Share what you want to learn', 'Try writing some code']
+    };
+  }
+  
+  if (message.includes('recursion') || message.includes('recursive')) {
+    return {
+      message: "Great question about recursion! Let's think step by step. Can you tell me what happens when a function calls itself? What gets stored in memory each time?",
+      concepts: ['recursion', 'function calls', 'stack memory'],
+      hints: ['Think about the call stack', 'What happens when a function calls itself?', 'How does it know when to stop?']
+    };
+  }
+  
+  if (message.includes('binary search') || message.includes('binary')) {
+    return {
+      message: "Excellent! Binary search is a powerful algorithm. If you're looking for the number 7 in [1,3,5,7,9,11,13], where would you start? Why start there?",
+      concepts: ['binary search', 'divide and conquer', 'sorted arrays'],
+      hints: ['Start in the middle', 'Is your target before or after the middle?', 'How many comparisons do you need?']
+    };
+  }
+  
+  if (message.includes('loop') || message.includes('for') || message.includes('while')) {
+    return {
+      message: "Loops are fundamental! Can you explain the difference between a for loop and a while loop? When would you use each one?",
+      concepts: ['loops', 'control flow', 'iteration'],
+      hints: ['For loops are for known iterations', 'While loops are for unknown iterations', 'Think about the loop condition']
+    };
+  }
+  
+  if (codeSnippet) {
+    return {
+      message: `I can see your code! This looks interesting. Can you tell me what you think this code will output? What is the purpose of each line?`,
+      concepts: ['code analysis', 'code understanding'],
+      hints: ['Read the code line by line', 'Think about what each function does', 'What is the expected output?']
+    };
+  }
+  
+  // Default response based on skill level
+  const levelResponses = {
     beginner: {
-      'recursion': {
-        message: "Great question! Let's think about recursion step by step. Can you tell me what happens when you call a function?",
-        concepts: ['function calls', 'stack memory'],
-        hints: ['Think about what happens when you call a function', 'What gets stored in memory?']
-      },
-      'binary search': {
-        message: "Excellent! Binary search is like looking for a word in a dictionary. If you're looking for 'Python', where would you start?",
-        concepts: ['divide and conquer', 'sorted arrays'],
-        hints: ['Start in the middle', 'Is your target before or after the middle?']
-      },
-      'default': {
-        message: "That's a great question! Let me help you understand this concept. Can you tell me what you already know about it?",
-        concepts: ['basic concepts'],
-        hints: ['Start with what you know', 'Ask specific questions']
-      }
+      message: "That's a great question! I'd love to help you understand this concept. Can you tell me what you already know about it? What specifically confuses you?",
+      concepts: ['learning approach', 'concept exploration'],
+      hints: ['Start with what you know', 'Ask specific questions', "Don't be afraid to make mistakes"]
     },
     intermediate: {
-      'default': {
-        message: "Good thinking! Let's dive deeper. Can you explain your approach and what you think might be challenging?",
-        concepts: ['advanced concepts', 'problem solving'],
-        hints: ['Break down the problem', 'Consider edge cases']
-      }
+      message: "Good thinking! Let's dive deeper into this. Can you explain your current understanding and what you think might be challenging?",
+      concepts: ['advanced concepts', 'problem solving'],
+      hints: ['Break down the problem', 'Consider edge cases', 'Think about different approaches']
     },
     advanced: {
-      'default': {
-        message: "Interesting approach! Let's analyze the time and space complexity. What's your current solution's Big O notation?",
-        concepts: ['complexity analysis', 'optimization'],
-        hints: ['Analyze your algorithm', 'Look for optimization opportunities']
-      }
+      message: "Interesting approach! Let us analyze this from multiple angles. What is your current solution time and space complexity? Can you think of optimizations?",
+      concepts: ['complexity analysis', 'optimization', 'advanced problem solving'],
+      hints: ['Analyze your algorithm', 'Look for optimization opportunities', 'Consider trade-offs']
     }
   };
   
-  // Determine response based on skill level and message content
-  const level = skillLevel || 'beginner';
-  const levelResponses = responses[level] || responses.beginner;
+  return levelResponses[skillLevel] || levelResponses.beginner;
+}
+
+// Create intelligent prompt for OpenAI
+function createTutoringPrompt(studentMessage, codeSnippet, skillLevel, user) {
+  let prompt = `You are a Socratic computer science tutor helping a ${skillLevel} level student.
   
-  // Simple keyword matching for demo (in production, use OpenAI for better understanding)
-  let response = levelResponses.default;
-  
-  if (studentMessage.toLowerCase().includes('recursion')) {
-    response = levelResponses.recursion || levelResponses.default;
-  } else if (studentMessage.toLowerCase().includes('binary search') || studentMessage.toLowerCase().includes('binary')) {
-    response = levelResponses.binary_search || levelResponses.default;
-  }
-  
-  // Add code-specific guidance if code snippet provided
+Student's question: "${studentMessage}"
+
+Student's skill level: ${skillLevel}
+Student's name: ${user?.name || 'Student'}`;
+
   if (codeSnippet) {
-    response.message += "\n\nI can see your code. Let me ask: what do you think this code will output?";
-    response.concepts.push('code analysis');
+    prompt += `\n\nStudent's code:\n\`\`\`${codeSnippet}\`\`\``;
   }
+
+  prompt += `\n\nProvide a helpful, encouraging response that:
+1. Uses Socratic teaching (ask guiding questions, don't give direct answers)
+2. Is appropriate for ${skillLevel} level
+3. Relates to the specific question asked
+4. If code is provided, analyze it and ask relevant questions
+5. Keep response under 200 words
+6. Be encouraging and patient
+
+Response:`;
+
+  return prompt;
+}
+
+// Extract concepts from AI response
+function extractConcepts(aiMessage) {
+  const commonConcepts = [
+    'recursion', 'loops', 'functions', 'variables', 'data types', 'algorithms',
+    'binary search', 'sorting', 'arrays', 'strings', 'objects', 'classes',
+    'inheritance', 'polymorphism', 'encapsulation', 'abstraction', 'complexity',
+    'time complexity', 'space complexity', 'optimization', 'debugging'
+  ];
   
-  return response;
+  const foundConcepts = commonConcepts.filter(concept => 
+    aiMessage.toLowerCase().includes(concept)
+  );
+  
+  return foundConcepts.length > 0 ? foundConcepts : ['learning', 'concept exploration'];
+}
+
+// Extract hints from AI response
+function extractHints(aiMessage) {
+  // Simple hint extraction - look for question marks and suggestions
+  const sentences = aiMessage.split(/[.!?]+/).filter(s => s.trim().length > 10);
+  const hints = sentences.slice(0, 2).map(s => s.trim());
+  
+  return hints.length > 0 ? hints : ['Think about the problem step by step', 'Ask specific questions'];
 }
 
 async function executeCode(code, language) {
-  // Mock code execution for now (will be replaced with Judge0 API)
-  // In production, this would call Judge0 API for safe code execution
-  
+  try {
+    // Check if Judge0 API key is available
+    const judge0ApiKey = process.env.JUDGE0_API_KEY;
+    
+    if (!judge0ApiKey) {
+      // Fallback to local execution when Judge0 is not configured
+      return await executeCodeLocally(code, language);
+    }
+    
+    // Real Judge0 API call for safe code execution
+    const languageId = getJudge0LanguageId(language);
+    
+    const response = await fetch('https://judge0-ce.p.rapidapi.com/submissions', {
+      method: 'POST',
+      headers: {
+        'X-RapidAPI-Key': judge0ApiKey,
+        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        source_code: code,
+        language_id: languageId,
+        stdin: '',
+        cpu_time_limit: 5,
+        memory_limit: 128
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Judge0 API error: ${response.status}`);
+    }
+    
+    const submission = await response.json();
+    const token = submission.token;
+    
+    // Wait for execution to complete
+    let result;
+    for (let i = 0; i < 10; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const resultResponse = await fetch(`https://judge0-ce.p.rapidapi.com/submissions/${token}`, {
+        headers: {
+          'X-RapidAPI-Key': judge0ApiKey,
+          'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+        }
+      });
+      
+      if (resultResponse.ok) {
+        result = await resultResponse.json();
+        if (result.status.id > 2) { // Status > 2 means execution completed
+          break;
+        }
+      }
+    }
+    
+    if (!result) {
+      throw new Error('Code execution timeout');
+    }
+    
+    return {
+      output: result.stdout || '',
+      error: result.stderr || null,
+      executionTime: `${result.time || 0}s`,
+      memory: `${result.memory || 0}KB`,
+      status: result.status.description || 'completed'
+    };
+    
+  } catch (error) {
+    console.error('Code execution error:', error);
+    // Fallback to local execution
+    return await executeCodeLocally(code, language);
+  }
+}
+
+// Local code execution fallback (for development/testing)
+async function executeCodeLocally(code, language) {
   try {
     // Simulate execution delay
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Simple mock execution based on language
+    // Simple local execution simulation
     let output = '';
     let error = null;
     
     if (language === 'python') {
-      if (code.includes('print(')) {
-        output = 'Hello, World!\n';
+      // Extract print statements and simulate output
+      const printMatches = code.match(/print\s*\(\s*([^)]+)\s*\)/g);
+      if (printMatches) {
+        output = printMatches.map(match => {
+          const content = match.replace(/print\s*\(\s*/, '').replace(/\s*\)/, '');
+          // Remove quotes and evaluate simple expressions
+          return content.replace(/['"]/g, '') + '\n';
+        }).join('');
       } else if (code.includes('def ')) {
         output = 'Function defined successfully\n';
       } else {
         output = 'Code executed successfully\n';
       }
     } else if (language === 'javascript') {
-      if (code.includes('console.log')) {
-        output = 'Hello, World!\n';
+      // Extract console.log statements and simulate output
+      const consoleMatches = code.match(/console\.log\s*\(\s*([^)]+)\s*\)/g);
+      if (consoleMatches) {
+        output = consoleMatches.map(match => {
+          const content = match.replace(/console\.log\s*\(\s*/, '').replace(/\s*\)/, '');
+          // Remove quotes and evaluate simple expressions
+          return content.replace(/['"]/g, '') + '\n';
+        }).join('');
       } else if (code.includes('function ')) {
         output = 'Function defined successfully\n';
       } else {
@@ -725,8 +927,8 @@ async function executeCode(code, language) {
     return {
       output: output,
       error: error,
-      executionTime: '1.2s',
-      memory: '2.1MB',
+      executionTime: '1.0s',
+      memory: '2.0MB',
       status: 'success'
     };
     
@@ -739,6 +941,19 @@ async function executeCode(code, language) {
       status: 'error'
     };
   }
+}
+
+// Get Judge0 language ID
+function getJudge0LanguageId(language) {
+  const languageMap = {
+    'python': 71,      // Python 3.8.1
+    'javascript': 63,  // JavaScript (Node.js 12.14.0)
+    'java': 62,        // Java (OpenJDK 13.0.1)
+    'cpp': 54,         // C++ (GCC 9.2.0)
+    'c': 50            // C (GCC 9.2.0)
+  };
+  
+  return languageMap[language] || 71; // Default to Python
 }
 
 function getActivityIcon(type) {
