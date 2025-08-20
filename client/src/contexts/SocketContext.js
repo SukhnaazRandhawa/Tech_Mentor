@@ -40,6 +40,22 @@ export const SocketProvider = ({ children }) => {
         console.error('Connection error:', error);
         setIsConnected(false);
       });
+      
+      // Tutoring session events
+      newSocket.on('tutoring_message', (data) => {
+        console.log('Received tutoring message:', data);
+        // This will be handled by the tutoring component
+      });
+      
+      newSocket.on('code_execution_result', (data) => {
+        console.log('Received code execution result:', data);
+        // This will be handled by the tutoring component
+      });
+      
+      newSocket.on('session_update', (data) => {
+        console.log('Session updated:', data);
+        // This will be handled by the tutoring component
+      });
 
       setSocket(newSocket);
 

@@ -18,6 +18,7 @@ const Dashboard = () => {
   const [recentActivity, setRecentActivity] = useState([]);
   const [todayGoal, setTodayGoal] = useState(null);
   const [stats, setStats] = useState({});
+  const [recentSessions, setRecentSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch dashboard data from backend
@@ -45,6 +46,13 @@ const Dashboard = () => {
         if (statsResponse.ok) {
           const statsData = await statsResponse.json();
           setStats(statsData.stats);
+        }
+        
+        // Fetch recent tutoring sessions
+        const sessionsResponse = await fetch('/api/tutoring/sessions');
+        if (sessionsResponse.ok) {
+          const sessionsData = await sessionsResponse.json();
+          setRecentSessions(sessionsData.sessions.slice(0, 3)); // Show last 3 sessions
         }
         
       } catch (error) {
@@ -296,8 +304,9 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Recent Activity */}
-      <div className="mt-8">
+      {/* Recent Activity & Tutoring Sessions */}
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Recent Activity */}
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-secondary-900">Recent Activity</h2>
@@ -337,6 +346,52 @@ const Dashboard = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+        
+        {/* Recent Tutoring Sessions */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-secondary-900">Recent Tutoring Sessions</h2>
+            <Link to="/tutoring" className="text-primary-600 hover:text-primary-700 text-sm font-medium">
+              Start New Session
+            </Link>
+          </div>
+          
+          <div className="space-y-4">
+            {recentSessions.length > 0 ? (
+              recentSessions.map((session) => (
+                <div key={session.id} className="p-3 rounded-lg hover:bg-secondary-50 transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-medium text-secondary-900">{session.topic}</h4>
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      session.status === 'completed' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {session.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-secondary-500">
+                    <span>Level: {session.skillLevel}</span>
+                    <span>{session.conversationCount} messages</span>
+                  </div>
+                  {session.duration && (
+                    <div className="mt-1 text-xs text-secondary-400">
+                      Duration: {session.duration} minutes
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <BookOpen className="h-8 w-8 text-secondary-400 mx-auto mb-2" />
+                <p className="text-secondary-500 text-sm">No tutoring sessions yet</p>
+                <Link to="/tutoring" className="text-primary-600 hover:text-primary-700 text-sm font-medium mt-2 inline-block">
+                  Start your first session
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>

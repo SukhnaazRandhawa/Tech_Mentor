@@ -121,6 +121,35 @@ io.on('connection', (socket) => {
     console.log(`User ${socket.id} joined interview session ${sessionId}`);
   });
   
+  // Handle real-time chat messages
+  socket.on('tutoring_message', (data) => {
+    // Broadcast to all users in the session
+    socket.to(`tutoring-${data.sessionId}`).emit('tutoring_message', {
+      ...data,
+      timestamp: new Date()
+    });
+  });
+  
+  // Handle code execution requests
+  socket.on('code_execution_request', async (data) => {
+    try {
+      const result = await executeCode(data.code, data.language);
+      
+      // Broadcast result to session
+      io.to(`tutoring-${data.sessionId}`).emit('code_execution_result', {
+        ...result,
+        sessionId: data.sessionId,
+        timestamp: new Date()
+      });
+    } catch (error) {
+      io.to(`tutoring-${data.sessionId}`).emit('code_execution_error', {
+        error: error.message,
+        sessionId: data.sessionId,
+        timestamp: new Date()
+      });
+    }
+  });
+  
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
@@ -252,6 +281,194 @@ app.post('/api/skills/add', (req, res) => {
   });
 });
 
+// AI Tutoring System Endpoints
+app.post('/api/tutoring/start-session', (req, res) => {
+  console.log('Start tutoring session request:', req.body);
+  
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  
+  const { topic, skillLevel = 'beginner' } = req.body;
+  const user = userDatabase.get(currentUserEmail);
+  
+  if (!topic || topic.trim() === '') {
+    return res.status(400).json({ message: 'Topic is required' });
+  }
+  
+  // Create new tutoring session
+  const sessionId = 'session-' + Date.now();
+  const session = {
+    id: sessionId,
+    userId: user._id,
+    topic: topic.trim(),
+    skillLevel: skillLevel,
+    startTime: new Date(),
+    conversation: [],
+    codeSnippets: [],
+    conceptsCovered: [],
+    status: 'active'
+  };
+  
+  // Store session in user's data (in real app, this would be in database)
+  if (!user.tutoringSessions) user.tutoringSessions = [];
+  user.tutoringSessions.push(session);
+  
+  console.log(`Tutoring session started: ${topic} for ${user.name}`);
+  
+  res.json({
+    message: 'Tutoring session started successfully',
+    session: session
+  });
+});
+
+app.post('/api/tutoring/chat', async (req, res) => {
+  console.log('Tutoring chat request:', req.body);
+  
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  
+  const { sessionId, message, codeSnippet, skillLevel = 'beginner' } = req.body;
+  const user = userDatabase.get(currentUserEmail);
+  
+  if (!message || message.trim() === '') {
+    return res.status(400).json({ message: 'Message is required' });
+  }
+  
+  try {
+    // Generate AI response using Socratic teaching method
+    const aiResponse = await generateTutoringResponse(message, codeSnippet, skillLevel, user);
+    
+    // Add to conversation history
+    const conversationEntry = {
+      id: Date.now(),
+      timestamp: new Date(),
+      speaker: 'student',
+      message: message.trim(),
+      codeSnippet: codeSnippet || null
+    };
+    
+    const aiEntry = {
+      id: Date.now() + 1,
+      timestamp: new Date(),
+      speaker: 'ai',
+      message: aiResponse.message,
+      codeSnippet: aiResponse.codeSnippet || null,
+      concepts: aiResponse.concepts || [],
+      hints: aiResponse.hints || []
+    };
+    
+    // Find and update session
+    if (user.tutoringSessions) {
+      const session = user.tutoringSessions.find(s => s.id === sessionId);
+      if (session) {
+        session.conversation.push(conversationEntry, aiEntry);
+        session.conceptsCovered = [...new Set([...session.conceptsCovered, ...aiResponse.concepts])];
+      }
+    }
+    
+    res.json({
+      message: 'AI response generated successfully',
+      response: aiResponse,
+      conversationId: conversationEntry.id
+    });
+    
+  } catch (error) {
+    console.error('Error generating AI response:', error);
+    res.status(500).json({ 
+      message: 'Failed to generate AI response',
+      error: error.message 
+    });
+  }
+});
+
+app.post('/api/tutoring/execute-code', async (req, res) => {
+  console.log('Code execution request:', req.body);
+  
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  
+  const { code, language = 'python', sessionId } = req.body;
+  const user = userDatabase.get(currentUserEmail);
+  
+  if (!code || code.trim() === '') {
+    return res.status(400).json({ message: 'Code is required' });
+  }
+  
+  try {
+    // Execute code using Judge0 API (mock for now)
+    const executionResult = await executeCode(code, language);
+    
+    // Add code execution to session
+    if (user.tutoringSessions && sessionId) {
+      const session = user.tutoringSessions.find(s => s.id === sessionId);
+      if (session) {
+        session.codeSnippets.push({
+          id: Date.now(),
+          code: code,
+          language: language,
+          result: executionResult,
+          timestamp: new Date()
+        });
+      }
+    }
+    
+    res.json({
+      message: 'Code executed successfully',
+      result: executionResult
+    });
+    
+  } catch (error) {
+    console.error('Error executing code:', error);
+    res.status(500).json({ 
+      message: 'Failed to execute code',
+      error: error.message 
+    });
+  }
+});
+
+app.post('/api/tutoring/end-session', (req, res) => {
+  console.log('End tutoring session request:', req.body);
+  
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  
+  const { sessionId } = req.body;
+  const user = userDatabase.get(currentUserEmail);
+  
+  if (!sessionId) {
+    return res.status(400).json({ message: 'Session ID is required' });
+  }
+  
+  // Find and end session
+  if (user.tutoringSessions) {
+    const session = user.tutoringSessions.find(s => s.id === sessionId);
+    if (session) {
+      session.status = 'completed';
+      session.endTime = new Date();
+      
+      // Calculate session duration
+      const duration = session.endTime - session.startTime;
+      session.duration = Math.round(duration / 1000 / 60); // in minutes
+      
+      // Update user statistics
+      if (!user.statistics) user.statistics = {};
+      user.statistics.totalStudyTime = (user.statistics.totalStudyTime || 0) + session.duration;
+      user.statistics.lessonsCompleted = (user.statistics.lessonsCompleted || 0) + 1;
+      
+      console.log(`Tutoring session ended: ${session.topic} for ${user.name} (${session.duration} minutes)`);
+    }
+  }
+  
+  res.json({
+    message: 'Tutoring session ended successfully',
+    session: user.tutoringSessions?.find(s => s.id === sessionId)
+  });
+});
+
 // Get all skills for current user
 app.get('/api/skills', (req, res) => {
   if (!currentUserEmail) {
@@ -260,6 +477,48 @@ app.get('/api/skills', (req, res) => {
   
   const user = userDatabase.get(currentUserEmail);
   res.json({ skills: user.skillLevels });
+});
+
+// Get tutoring session history
+app.get('/api/tutoring/sessions', (req, res) => {
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  
+  const user = userDatabase.get(currentUserEmail);
+  const sessions = user.tutoringSessions || [];
+  
+  res.json({ 
+    sessions: sessions.map(session => ({
+      id: session.id,
+      topic: session.topic,
+      skillLevel: session.skillLevel,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      status: session.status,
+      duration: session.duration,
+      conceptsCovered: session.conceptsCovered,
+      conversationCount: session.conversation?.length || 0,
+      codeSnippetsCount: session.codeSnippets?.length || 0
+    }))
+  });
+});
+
+// Get specific tutoring session details
+app.get('/api/tutoring/sessions/:sessionId', (req, res) => {
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  
+  const { sessionId } = req.params;
+  const user = userDatabase.get(currentUserEmail);
+  const session = user.tutoringSessions?.find(s => s.id === sessionId);
+  
+  if (!session) {
+    return res.status(404).json({ message: 'Session not found' });
+  }
+  
+  res.json({ session });
 });
 
 // Dynamic Dashboard API endpoints
@@ -367,6 +626,118 @@ function formatTimestamp(date) {
   } else {
     const days = Math.floor(diffInMinutes / 1440);
     return `${days} day${days > 1 ? 's' : ''} ago`;
+  }
+}
+
+// AI Tutoring Helper Functions
+async function generateTutoringResponse(studentMessage, codeSnippet, skillLevel, user) {
+  // Mock AI response for now (will be replaced with OpenAI API)
+  // In production, this would call OpenAI with a carefully crafted prompt
+  
+  const responses = {
+    beginner: {
+      'recursion': {
+        message: "Great question! Let's think about recursion step by step. Can you tell me what happens when you call a function?",
+        concepts: ['function calls', 'stack memory'],
+        hints: ['Think about what happens when you call a function', 'What gets stored in memory?']
+      },
+      'binary search': {
+        message: "Excellent! Binary search is like looking for a word in a dictionary. If you're looking for 'Python', where would you start?",
+        concepts: ['divide and conquer', 'sorted arrays'],
+        hints: ['Start in the middle', 'Is your target before or after the middle?']
+      },
+      'default': {
+        message: "That's a great question! Let me help you understand this concept. Can you tell me what you already know about it?",
+        concepts: ['basic concepts'],
+        hints: ['Start with what you know', 'Ask specific questions']
+      }
+    },
+    intermediate: {
+      'default': {
+        message: "Good thinking! Let's dive deeper. Can you explain your approach and what you think might be challenging?",
+        concepts: ['advanced concepts', 'problem solving'],
+        hints: ['Break down the problem', 'Consider edge cases']
+      }
+    },
+    advanced: {
+      'default': {
+        message: "Interesting approach! Let's analyze the time and space complexity. What's your current solution's Big O notation?",
+        concepts: ['complexity analysis', 'optimization'],
+        hints: ['Analyze your algorithm', 'Look for optimization opportunities']
+      }
+    }
+  };
+  
+  // Determine response based on skill level and message content
+  const level = skillLevel || 'beginner';
+  const levelResponses = responses[level] || responses.beginner;
+  
+  // Simple keyword matching for demo (in production, use OpenAI for better understanding)
+  let response = levelResponses.default;
+  
+  if (studentMessage.toLowerCase().includes('recursion')) {
+    response = levelResponses.recursion || levelResponses.default;
+  } else if (studentMessage.toLowerCase().includes('binary search') || studentMessage.toLowerCase().includes('binary')) {
+    response = levelResponses.binary_search || levelResponses.default;
+  }
+  
+  // Add code-specific guidance if code snippet provided
+  if (codeSnippet) {
+    response.message += "\n\nI can see your code. Let me ask: what do you think this code will output?";
+    response.concepts.push('code analysis');
+  }
+  
+  return response;
+}
+
+async function executeCode(code, language) {
+  // Mock code execution for now (will be replaced with Judge0 API)
+  // In production, this would call Judge0 API for safe code execution
+  
+  try {
+    // Simulate execution delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Simple mock execution based on language
+    let output = '';
+    let error = null;
+    
+    if (language === 'python') {
+      if (code.includes('print(')) {
+        output = 'Hello, World!\n';
+      } else if (code.includes('def ')) {
+        output = 'Function defined successfully\n';
+      } else {
+        output = 'Code executed successfully\n';
+      }
+    } else if (language === 'javascript') {
+      if (code.includes('console.log')) {
+        output = 'Hello, World!\n';
+      } else if (code.includes('function ')) {
+        output = 'Function defined successfully\n';
+      } else {
+        output = 'Code executed successfully\n';
+      }
+    } else {
+      output = 'Code executed successfully\n';
+    }
+    
+    return {
+      output: output,
+      error: error,
+      executionTime: '1.2s',
+      memory: '2.1MB',
+      status: 'success'
+    };
+    
+  } catch (err) {
+    return {
+      output: '',
+      error: err.message,
+      executionTime: '0.0s',
+      memory: '0.0MB',
+      status: 'error'
+    };
   }
 }
 
