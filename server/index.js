@@ -80,7 +80,7 @@ const createOrGetUserByEmail = (email, name = null) => {
 };
 
 // Track current logged-in user (test mode substitute for JWT)
-let currentUserEmail = null;
+let currentUserEmail = 'test@example.com'; // Temporary for testing
 
 // Database connection - Temporarily commented out for testing
 // mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/codementor-ai')
@@ -893,58 +893,44 @@ async function executeCodeLocally(code, language) {
     let error = null;
     
     if (language === 'python') {
-      // Extract print statements and simulate output
-      const printMatches = code.match(/print\s*\(\s*([^)]+)\s*\)/g);
-      if (printMatches) {
-        output = printMatches.map(match => {
-          const content = match.replace(/print\s*\(\s*/, '').replace(/\s*\)/, '');
-          
-          // Handle f-strings
-          if (content.includes('f"') || content.includes("f'")) {
-            // Simple f-string evaluation for common patterns
-            let processedContent = content;
-            
-            // Handle f"Count: {i}" pattern
-            if (content.match(/f["']([^"']*\{[^}]*\}[^"']*)["']/)) {
-              // Extract the string part and replace variables with sample values
-              const stringPart = content.replace(/^f["']/, '').replace(/["']$/, '');
-              
-              // Replace {i} with sample values for loops
-              if (stringPart.includes('{i}')) {
-                // If there's a for loop, simulate the output
-                if (code.includes('for') && code.includes('range')) {
-                  const rangeMatch = code.match(/range\s*\(\s*(\d+)\s*\)/);
-                  if (rangeMatch) {
-                    const count = parseInt(rangeMatch[1]);
-                    let result = '';
-                    for (let i = 0; i < count; i++) {
-                      result += stringPart.replace(/\{i\}/g, i) + '\n';
-                    }
-                    return result;
-                  }
-                }
-                // Default: show first few iterations
-                return stringPart.replace(/\{i\}/g, '0') + '\n' +
-                       stringPart.replace(/\{i\}/g, '1') + '\n' +
-                       stringPart.replace(/\{i\}/g, '2') + '\n';
-              }
-              
-              // Remove f-string prefix and quotes
-              return stringPart.replace(/['"]/g, '') + '\n';
-            }
-            
-            // Remove f-string prefix and quotes
-            return processedContent.replace(/^f["']/, '').replace(/["']$/, '') + '\n';
-          }
-          
-          // Handle regular strings
-          return content.replace(/['"]/g, '') + '\n';
-        }).join('');
-      } else if (code.includes('def ')) {
-        output = 'Function defined successfully\n';
-      } else {
-        output = 'Code executed successfully\n';
-      }
+      // Actually execute Python code using child_process
+      const { spawn } = require('child_process');
+      
+      return new Promise((resolve) => {
+        const pythonProcess = spawn('python3', ['-c', code]);
+        let output = '';
+        let error = '';
+
+        pythonProcess.stdout.on('data', (data) => {
+          output += data.toString();
+        });
+
+        pythonProcess.stderr.on('data', (data) => {
+          error += data.toString();
+        });
+
+        pythonProcess.on('close', (exitCode) => {
+          resolve({
+            output: output || (error ? '' : 'No output'),
+            error: error || null,
+            executionTime: '1.0s',
+            memory: '< 1MB',
+            status: 'success'
+          });
+        });
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          pythonProcess.kill();
+          resolve({
+            output: '',
+            error: 'Execution timeout (10s limit)',
+            executionTime: '10.0s',
+            memory: '0MB',
+            status: 'timeout'
+          });
+        }, 10000);
+      });
     } else if (language === 'javascript') {
       // Extract console.log statements and simulate output
       const consoleMatches = code.match(/console\.log\s*\(\s*([^)]+)\s*\)/g);
