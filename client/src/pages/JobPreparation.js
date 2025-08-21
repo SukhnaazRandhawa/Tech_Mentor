@@ -1,11 +1,12 @@
 import { BookOpen, Clock, FileText, Rocket, Search, Target } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 const JobPreparation = () => {
   const [activeTab, setActiveTab] = useState('analysis');
   const [jobDescription, setJobDescription] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [company, setCompany] = useState('');
+  const [preparationTime, setPreparationTime] = useState('12-16');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [learningPath, setLearningPath] = useState(null);
@@ -31,7 +32,8 @@ const JobPreparation = () => {
           { name: 'SQL', level: 6, importance: 'medium' }
         ],
         experienceLevel: 'Mid-Senior',
-        estimatedSalary: '$120,000 - $150,000'
+        estimatedSalary: '$120,000 - $150,000',
+        preparationTime: preparationTime
       };
       
       setAnalysisResult(result);
@@ -51,29 +53,117 @@ const JobPreparation = () => {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      const path = {
-        title: `Learning Path for ${jobTitle}`,
-        estimatedDuration: '12-16 weeks',
-        phases: [
+      // Customize learning path based on available time
+      let phases = [];
+      let estimatedDuration = '';
+      
+      if (preparationTime === '2-4') {
+        phases = [
+          {
+            name: 'Intensive Foundation (Weeks 1-2)',
+            skills: ['Python Basics', 'React Fundamentals'],
+            resources: ['CodeMentor AI Tutoring', 'Fast-track courses', 'Documentation'],
+            milestones: ['Complete Python basics', 'Build simple React app'],
+            platformLearning: ['2 tutoring sessions on Python', '1 tutoring session on React']
+          },
+          {
+            name: 'Core Skills (Weeks 3-4)',
+            skills: ['API Design', 'Basic System Design'],
+            resources: ['CodeMentor AI Tutoring', 'Practice projects', 'Documentation'],
+            milestones: ['Build simple API', 'Design basic system'],
+            platformLearning: ['2 tutoring sessions on API design', '1 tutoring session on system design']
+          }
+        ];
+        estimatedDuration = '2-4 weeks';
+      } else if (preparationTime === '4-8') {
+        phases = [
+          {
+            name: 'Foundation (Weeks 1-3)',
+            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
+            resources: ['CodeMentor AI Tutoring', 'Online courses', 'Documentation'],
+            milestones: ['Complete Python course', 'Build React app', 'Design database'],
+            platformLearning: ['3 tutoring sessions on Python', '2 tutoring sessions on React', '1 tutoring session on databases']
+          },
+          {
+            name: 'Intermediate (Weeks 4-6)',
+            skills: ['Advanced Python', 'State Management', 'API Design'],
+            resources: ['CodeMentor AI Tutoring', 'Practice projects', 'Code reviews'],
+            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
+            platformLearning: ['2 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '1 tutoring session on API design']
+          },
+          {
+            name: 'Advanced (Weeks 7-8)',
+            skills: ['System Design', 'Performance Optimization'],
+            resources: ['CodeMentor AI Tutoring', 'System design books', 'Performance testing'],
+            milestones: ['Design scalable architecture', 'Optimize performance'],
+            platformLearning: ['2 tutoring sessions on system design', '1 tutoring session on performance optimization']
+          }
+        ];
+        estimatedDuration = '4-8 weeks';
+      } else if (preparationTime === '8-12') {
+        phases = [
           {
             name: 'Foundation (Weeks 1-4)',
             skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
-            resources: ['Online courses', 'Practice projects', 'Documentation'],
-            milestones: ['Complete Python course', 'Build simple React app', 'Design database schema']
+            resources: ['CodeMentor AI Tutoring', 'Online courses', 'Practice projects', 'Documentation'],
+            milestones: ['Complete Python course', 'Build simple React app', 'Design database schema'],
+            platformLearning: ['4 tutoring sessions on Python', '3 tutoring sessions on React', '2 tutoring sessions on databases']
           },
           {
             name: 'Intermediate (Weeks 5-8)',
             skills: ['Advanced Python', 'State Management', 'API Design'],
-            resources: ['Advanced tutorials', 'Real projects', 'Code reviews'],
-            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services']
+            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Code reviews'],
+            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
+            platformLearning: ['3 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '2 tutoring sessions on API design']
           },
           {
             name: 'Advanced (Weeks 9-12)',
             skills: ['System Design', 'Cloud Services', 'Performance Optimization'],
-            resources: ['System design books', 'AWS labs', 'Performance testing'],
-            milestones: ['Design scalable architecture', 'Deploy to AWS', 'Optimize performance']
+            resources: ['CodeMentor AI Tutoring', 'System design books', 'AWS labs', 'Performance testing'],
+            milestones: ['Design scalable architecture', 'Deploy to AWS', 'Optimize performance'],
+            platformLearning: ['3 tutoring sessions on system design', '2 tutoring sessions on cloud services', '1 tutoring session on performance']
           }
-        ]
+        ];
+        estimatedDuration = '8-12 weeks';
+      } else {
+        // Default 12-16 weeks
+        phases = [
+          {
+            name: 'Foundation (Weeks 1-4)',
+            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
+            resources: ['CodeMentor AI Tutoring', 'Online courses', 'Practice projects', 'Documentation'],
+            milestones: ['Complete Python course', 'Build simple React app', 'Design database schema'],
+            platformLearning: ['4 tutoring sessions on Python', '3 tutoring sessions on React', '2 tutoring sessions on databases']
+          },
+          {
+            name: 'Intermediate (Weeks 5-8)',
+            skills: ['Advanced Python', 'State Management', 'API Design'],
+            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Code reviews'],
+            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
+            platformLearning: ['3 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '2 tutoring sessions on API design']
+          },
+          {
+            name: 'Advanced (Weeks 9-12)',
+            skills: ['System Design', 'Cloud Services', 'Performance Optimization'],
+            resources: ['CodeMentor AI Tutoring', 'System design books', 'AWS labs', 'Performance testing'],
+            milestones: ['Design scalable architecture', 'Deploy to AWS', 'Optimize performance'],
+            platformLearning: ['3 tutoring sessions on system design', '2 tutoring sessions on cloud services', '1 tutoring session on performance']
+          },
+          {
+            name: 'Expertise (Weeks 13-16)',
+            skills: ['Leadership', 'Architecture Patterns', 'Best Practices'],
+            resources: ['CodeMentor AI Tutoring', 'Leadership books', 'Code reviews', 'Mentoring'],
+            milestones: ['Lead technical discussions', 'Implement patterns', 'Mentor others'],
+            platformLearning: ['2 tutoring sessions on leadership', '2 tutoring sessions on architecture', '1 tutoring session on mentoring']
+          }
+        ];
+        estimatedDuration = '12-16 weeks';
+      }
+      
+      const path = {
+        title: `Learning Path for ${jobTitle}`,
+        estimatedDuration: estimatedDuration,
+        phases: phases
       };
       
       setLearningPath(path);
@@ -83,6 +173,119 @@ const JobPreparation = () => {
       alert('Failed to generate learning path. Please try again.');
     }
   };
+
+  const getProjectSuggestions = (skillName) => {
+    const projectDatabase = {
+      'Python': [
+        {
+          title: 'Python Web API',
+          description: 'Build a RESTful API using FastAPI with authentication, database integration, and automated testing.',
+          skills: ['Python', 'FastAPI', 'SQLAlchemy', 'Pytest'],
+          difficulty: 'Intermediate',
+          estimatedTime: '2-3 weeks',
+          relevance: 95
+        },
+        {
+          title: 'Data Analysis Tool',
+          description: 'Create a data analysis application using pandas, matplotlib, and scikit-learn for data visualization and machine learning.',
+          skills: ['Python', 'Pandas', 'Matplotlib', 'Scikit-learn'],
+          difficulty: 'Intermediate',
+          estimatedTime: '3-4 weeks',
+          relevance: 90
+        }
+      ],
+      'React': [
+        {
+          title: 'React Dashboard',
+          description: 'Build an interactive dashboard with charts, data tables, and real-time updates using React hooks and context.',
+          skills: ['React', 'Chart.js', 'Context API', 'CSS Grid'],
+          difficulty: 'Intermediate',
+          estimatedTime: '2-3 weeks',
+          relevance: 92
+        },
+        {
+          title: 'React E-commerce',
+          description: 'Create a product catalog with shopping cart, user authentication, and payment integration.',
+          skills: ['React', 'Redux', 'Stripe API', 'Firebase'],
+          difficulty: 'Advanced',
+          estimatedTime: '4-5 weeks',
+          relevance: 88
+        }
+      ],
+      'AWS': [
+        {
+          title: 'Cloud Infrastructure',
+          description: 'Deploy a full-stack application on AWS using EC2, RDS, S3, and CloudFront with CI/CD pipeline.',
+          skills: ['AWS', 'Terraform', 'Docker', 'CI/CD'],
+          difficulty: 'Advanced',
+          estimatedTime: '3-4 weeks',
+          relevance: 85
+        }
+      ],
+      'System Design': [
+        {
+          title: 'Scalable Chat System',
+          description: 'Design and implement a real-time chat system with user presence, message persistence, and load balancing.',
+          skills: ['WebSockets', 'Redis', 'Load Balancing', 'Database Design'],
+          difficulty: 'Advanced',
+          estimatedTime: '4-5 weeks',
+          relevance: 90
+        }
+      ],
+      'SQL': [
+        {
+          title: 'Database Design',
+          description: 'Design a normalized database schema for a social media platform with complex relationships and queries.',
+          skills: ['SQL', 'Database Design', 'Indexing', 'Query Optimization'],
+          difficulty: 'Intermediate',
+          estimatedTime: '2-3 weeks',
+          relevance: 87
+        }
+      ]
+    };
+    
+    return projectDatabase[skillName] || [
+      {
+        title: 'General Practice Project',
+        description: 'A project to practice the core concepts and best practices.',
+        skills: [skillName, 'Best Practices', 'Testing'],
+        difficulty: 'Intermediate',
+        estimatedTime: '2-3 weeks',
+        relevance: 75
+      }
+    ];
+  };
+
+  // Save data to localStorage whenever it changes
+  useEffect(() => {
+    const jobData = {
+      jobTitle,
+      company,
+      jobDescription,
+      preparationTime,
+      analysisResult,
+      learningPath
+    };
+    localStorage.setItem('jobPreparationData', JSON.stringify(jobData));
+  }, [jobTitle, company, jobDescription, preparationTime, analysisResult, learningPath]);
+
+  // Load data from localStorage on component mount
+  useEffect(() => {
+    const savedJobData = localStorage.getItem('jobPreparationData');
+    if (savedJobData) {
+      try {
+        const data = JSON.parse(savedJobData);
+        if (data.jobTitle) setJobTitle(data.jobTitle);
+        if (data.company) setCompany(data.company);
+        if (data.jobDescription) setJobDescription(data.jobDescription);
+        if (data.preparationTime) setPreparationTime(data.preparationTime);
+        if (data.analysisResult) setAnalysisResult(data.analysisResult);
+        if (data.learningPath) setLearningPath(data.learningPath);
+      } catch (error) {
+        console.error('Error loading saved job data:', error);
+      }
+    }
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -166,6 +369,26 @@ const JobPreparation = () => {
                   placeholder="e.g., Google, Microsoft, Startup Inc"
                   className="input-field w-full"
                 />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-secondary-700 mb-2">
+                  Available Preparation Time *
+                </label>
+                <select
+                  value={preparationTime}
+                  onChange={(e) => setPreparationTime(e.target.value)}
+                  className="input-field w-full"
+                >
+                  <option value="2-4">2-4 weeks (Intensive)</option>
+                  <option value="4-8">4-8 weeks (Fast-track)</option>
+                  <option value="8-12">8-12 weeks (Standard)</option>
+                  <option value="12-16">12-16 weeks (Comprehensive)</option>
+                  <option value="16+">16+ weeks (Flexible)</option>
+                </select>
+                <p className="text-xs text-secondary-500 mt-1">
+                  This will customize your learning path and project timeline.
+                </p>
               </div>
               
               <div>
@@ -325,7 +548,7 @@ const JobPreparation = () => {
                         </h3>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
                           <h4 className="font-medium text-secondary-900 mb-2">Skills to Learn</h4>
                           <div className="space-y-1">
@@ -354,6 +577,17 @@ const JobPreparation = () => {
                             {phase.milestones.map((milestone, milestoneIndex) => (
                               <div key={milestoneIndex} className="text-sm text-secondary-600">
                                 • {milestone}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <h4 className="font-medium text-secondary-900 mb-2 text-primary-600">Platform Learning</h4>
+                          <div className="space-y-1">
+                            {phase.platformLearning.map((platformItem, platformIndex) => (
+                              <div key={platformIndex} className="text-sm text-primary-600 font-medium">
+                                • {platformItem}
                               </div>
                             ))}
                           </div>
@@ -389,93 +623,85 @@ const JobPreparation = () => {
           <div className="card">
             <h2 className="text-2xl font-bold text-secondary-900 mb-6">
               Project Suggestions
+              {analysisResult && (
+                <span className="text-lg font-normal text-secondary-600 ml-2">
+                  for {jobTitle}
+                </span>
+              )}
             </h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="border border-secondary-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-secondary-900">
-                    E-commerce Platform
-                  </h3>
-                  <div className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                    Intermediate
-                  </div>
-                </div>
-                
-                <p className="text-secondary-600 mb-4 text-sm">
-                  Build a full-stack e-commerce application with user authentication, product management, and payment integration.
-                </p>
-                
-                <div className="space-y-3">
-                  <div>
-                    <h4 className="font-medium text-secondary-900 mb-2 text-sm">Skills Covered</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <span className="px-2 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">React</span>
-                      <span className="px-2 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">Node.js</span>
-                      <span className="px-2 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">MongoDB</span>
-                      <span className="px-2 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">Stripe API</span>
+            {analysisResult ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {analysisResult.requiredSkills.map((skill, index) => {
+                  // Generate project suggestions based on required skills
+                  const projectSuggestions = getProjectSuggestions(skill.name);
+                  return projectSuggestions.map((project, projectIndex) => (
+                    <div key={`${index}-${projectIndex}`} className="border border-secondary-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-secondary-900">
+                          {project.title}
+                        </h3>
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          project.difficulty === 'Beginner' ? 'bg-green-100 text-green-800' :
+                          project.difficulty === 'Intermediate' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {project.difficulty}
+                        </div>
+                      </div>
+                      
+                      <p className="text-secondary-600 mb-4 text-sm">
+                        {project.description}
+                      </p>
+                      
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="font-medium text-secondary-900 mb-2 text-sm">Skills Covered</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {project.skills.map((skillName, skillIndex) => (
+                              <span key={skillIndex} className="px-2 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">
+                                {skillName}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center text-sm text-secondary-600">
+                            <Clock className="h-4 w-4 mr-1" />
+                            {project.estimatedTime}
+                          </div>
+                          <div className="flex items-center text-sm text-secondary-600">
+                            <span className="text-yellow-500">★</span>
+                            {project.relevance}% relevant
+                          </div>
+                        </div>
+                        
+                        <button className="btn-primary w-full">
+                          Start Project
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center text-sm text-secondary-600">
-                      <Clock className="h-4 w-4 mr-1" />
-                      4-6 weeks
-                    </div>
-                    <div className="flex items-center text-sm text-secondary-600">
-                      <span className="text-yellow-500">★</span>
-                      95% relevant
-                    </div>
-                  </div>
-                  
-                  <button className="btn-primary w-full">
-                    Start Project
-                  </button>
-                </div>
+                  ));
+                })}
               </div>
-
-              <div className="border border-secondary-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-secondary-900">
-                    Real-time Chat Application
-                  </h3>
-                  <div className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                    Intermediate
-                  </div>
-                </div>
-                
-                <p className="text-secondary-600 mb-4 text-sm">
-                  Create a chat app with WebSocket integration, user presence, and message history.
+            ) : (
+              <div className="text-center py-12">
+                <Rocket className="h-16 w-16 text-secondary-400 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-secondary-900 mb-2">
+                  No Job Analysis Yet
+                </h3>
+                <p className="text-secondary-600 mb-4">
+                  Analyze a job description first to get personalized project suggestions.
                 </p>
-                
-                <div className="space-y-3">
-                  <div>
-                    <h4 className="font-medium text-secondary-900 mb-2 text-sm">Skills Covered</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <span className="px-2 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">React</span>
-                      <span className="px-2 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">Socket.io</span>
-                      <span className="px-2 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">Express</span>
-                      <span className="px-2 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">Redis</span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center text-sm text-secondary-600">
-                      <Clock className="h-4 w-4 mr-1" />
-                      3-4 weeks
-                    </div>
-                    <div className="flex items-center text-sm text-secondary-600">
-                      <span className="text-yellow-500">★</span>
-                      88% relevant
-                    </div>
-                  </div>
-                  
-                  <button className="btn-primary w-full">
-                    Start Project
-                  </button>
-                </div>
+                <button
+                  onClick={() => setActiveTab('analysis')}
+                  className="btn-primary"
+                >
+                  Analyze Job
+                </button>
               </div>
-            </div>
+                         )}
           </div>
         </div>
       )}
