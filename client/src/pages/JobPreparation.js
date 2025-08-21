@@ -25,20 +25,19 @@ const JobPreparation = () => {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      const result = {
-        requiredSkills: [
-          { name: 'Python', level: 8, importance: 'high' },
-          { name: 'React', level: 7, importance: 'high' },
-          { name: 'AWS', level: 6, importance: 'medium' },
-          { name: 'System Design', level: 7, importance: 'high' },
-          { name: 'SQL', level: 6, importance: 'medium' }
-        ],
-        experienceLevel: 'Mid-Senior',
-        estimatedSalary: '$120,000 - $150,000',
+      // Dynamic analysis based on job description
+      const result = analyzeJobDescription(jobDescription);
+      const experienceLevel = determineExperienceLevel(jobDescription);
+      const estimatedSalary = estimateSalary(jobDescription, result.requiredSkills);
+      
+      const analysisResult = {
+        requiredSkills: result.requiredSkills,
+        experienceLevel: experienceLevel,
+        estimatedSalary: estimatedSalary,
         preparationTime: preparationTime
       };
       
-      setAnalysisResult(result);
+      setAnalysisResult(analysisResult);
       setActiveTab('gaps');
     } catch (error) {
       console.error('Error analyzing job:', error);
@@ -48,6 +47,135 @@ const JobPreparation = () => {
     }
   };
 
+  // Dynamic job analysis functions
+  const analyzeJobDescription = (description) => {
+    const lowerDesc = description.toLowerCase();
+    const skills = [];
+    
+    // Define skill keywords and their importance
+    const skillKeywords = {
+      'python': { name: 'Python', baseLevel: 7, importance: 'high' },
+      'javascript': { name: 'JavaScript', baseLevel: 7, importance: 'high' },
+      'react': { name: 'React', baseLevel: 7, importance: 'high' },
+      'node': { name: 'Node.js', baseLevel: 6, importance: 'medium' },
+      'aws': { name: 'AWS', baseLevel: 6, importance: 'medium' },
+      'azure': { name: 'Azure', baseLevel: 6, importance: 'medium' },
+      'gcp': { name: 'Google Cloud', baseLevel: 6, importance: 'medium' },
+      'docker': { name: 'Docker', baseLevel: 5, importance: 'medium' },
+      'kubernetes': { name: 'Kubernetes', baseLevel: 6, importance: 'medium' },
+      'sql': { name: 'SQL', baseLevel: 6, importance: 'medium' },
+      'mongodb': { name: 'MongoDB', baseLevel: 5, importance: 'medium' },
+      'postgresql': { name: 'PostgreSQL', baseLevel: 5, importance: 'medium' },
+      'java': { name: 'Java', baseLevel: 7, importance: 'high' },
+      'c++': { name: 'C++', baseLevel: 7, importance: 'high' },
+      'c#': { name: 'C#', baseLevel: 6, importance: 'medium' },
+      'go': { name: 'Go', baseLevel: 6, importance: 'medium' },
+      'rust': { name: 'Rust', baseLevel: 6, importance: 'medium' },
+      'html': { name: 'HTML', baseLevel: 5, importance: 'low' },
+      'css': { name: 'CSS', baseLevel: 5, importance: 'low' },
+      'typescript': { name: 'TypeScript', baseLevel: 6, importance: 'medium' },
+      'vue': { name: 'Vue.js', baseLevel: 5, importance: 'medium' },
+      'angular': { name: 'Angular', baseLevel: 6, importance: 'medium' },
+      'system design': { name: 'System Design', baseLevel: 7, importance: 'high' },
+      'microservices': { name: 'Microservices', baseLevel: 6, importance: 'medium' },
+      'api': { name: 'API Design', baseLevel: 6, importance: 'medium' },
+      'rest': { name: 'REST APIs', baseLevel: 5, importance: 'medium' },
+      'graphql': { name: 'GraphQL', baseLevel: 5, importance: 'medium' },
+      'machine learning': { name: 'Machine Learning', baseLevel: 7, importance: 'high' },
+      'ai': { name: 'Artificial Intelligence', baseLevel: 7, importance: 'high' },
+      'data science': { name: 'Data Science', baseLevel: 6, importance: 'medium' },
+      'devops': { name: 'DevOps', baseLevel: 6, importance: 'medium' },
+      'ci/cd': { name: 'CI/CD', baseLevel: 5, importance: 'medium' },
+      'git': { name: 'Git', baseLevel: 5, importance: 'low' },
+      'linux': { name: 'Linux', baseLevel: 5, importance: 'low' },
+      'agile': { name: 'Agile', baseLevel: 4, importance: 'low' },
+      'scrum': { name: 'Scrum', baseLevel: 4, importance: 'low' }
+    };
+    
+    // Check for skills in description
+    Object.entries(skillKeywords).forEach(([keyword, skill]) => {
+      if (lowerDesc.includes(keyword)) {
+        // Adjust level based on context
+        let level = skill.baseLevel;
+        if (lowerDesc.includes('senior') || lowerDesc.includes('lead') || lowerDesc.includes('principal')) {
+          level = Math.min(level + 2, 10);
+        } else if (lowerDesc.includes('junior') || lowerDesc.includes('entry') || lowerDesc.includes('intern')) {
+          level = Math.max(level - 2, 3);
+        }
+        
+        skills.push({
+          name: skill.name,
+          level: level,
+          importance: skill.importance
+        });
+      }
+    });
+    
+    // If no skills found, add some common ones based on job title
+    if (skills.length === 0) {
+      const lowerTitle = jobTitle.toLowerCase();
+      if (lowerTitle.includes('frontend') || lowerTitle.includes('ui')) {
+        skills.push({ name: 'HTML', level: 6, importance: 'medium' });
+        skills.push({ name: 'CSS', level: 6, importance: 'medium' });
+        skills.push({ name: 'JavaScript', level: 7, importance: 'high' });
+      } else if (lowerTitle.includes('backend')) {
+        skills.push({ name: 'Python', level: 6, importance: 'medium' });
+        skills.push({ name: 'SQL', level: 6, importance: 'medium' });
+        skills.push({ name: 'API Design', level: 6, importance: 'medium' });
+      } else if (lowerTitle.includes('fullstack')) {
+        skills.push({ name: 'JavaScript', level: 7, importance: 'high' });
+        skills.push({ name: 'React', level: 6, importance: 'medium' });
+        skills.push({ name: 'Node.js', level: 6, importance: 'medium' });
+      }
+    }
+    
+    return { requiredSkills: skills };
+  };
+
+  const determineExperienceLevel = (description) => {
+    const lowerDesc = description.toLowerCase();
+    
+    if (lowerDesc.includes('senior') || lowerDesc.includes('lead') || lowerDesc.includes('principal') || lowerDesc.includes('architect')) {
+      return 'Senior';
+    } else if (lowerDesc.includes('mid') || lowerDesc.includes('intermediate') || lowerDesc.includes('experienced')) {
+      return 'Mid-Level';
+    } else if (lowerDesc.includes('junior') || lowerDesc.includes('entry') || lowerDesc.includes('intern') || lowerDesc.includes('graduate')) {
+      return 'Junior';
+    } else {
+      return 'Mid-Level'; // Default
+    }
+  };
+
+  const estimateSalary = (description, skills) => {
+    const experienceLevel = determineExperienceLevel(description);
+    const skillCount = skills.length;
+    
+    let baseSalary = 0;
+    switch (experienceLevel) {
+      case 'Junior':
+        baseSalary = 60000;
+        break;
+      case 'Mid-Level':
+        baseSalary = 90000;
+        break;
+      case 'Senior':
+        baseSalary = 130000;
+        break;
+      default:
+        baseSalary = 90000;
+    }
+    
+    // Adjust based on number of skills
+    const skillBonus = skillCount * 5000;
+    const totalSalary = baseSalary + skillBonus;
+    
+    // Create range
+    const minSalary = Math.round(totalSalary * 0.9 / 1000) * 1000;
+    const maxSalary = Math.round(totalSalary * 1.1 / 1000) * 1000;
+    
+    return `$${minSalary.toLocaleString()} - $${maxSalary.toLocaleString()}`;
+  };
+
   const generateLearningPath = async () => {
     if (!analysisResult) return;
     
@@ -55,7 +183,11 @@ const JobPreparation = () => {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Customize learning path based on available time
+      // Get the actual skills from the job analysis
+      const jobSkills = analysisResult.requiredSkills.map(skill => skill.name);
+      console.log('Job skills for learning path:', jobSkills);
+      
+      // Customize learning path based on available time and actual job skills
       let phases = [];
       let estimatedDuration = '';
       
@@ -63,17 +195,17 @@ const JobPreparation = () => {
         phases = [
           {
             name: 'Intensive Foundation (Weeks 1-2)',
-            skills: ['Python Basics', 'React Fundamentals'],
+            skills: jobSkills.slice(0, 2).map(skill => `${skill} Basics`),
             resources: ['CodeMentor AI Tutoring', 'Fast-track courses', 'Documentation'],
-            milestones: ['Complete Python basics', 'Build simple React app'],
-            platformLearning: ['2 tutoring sessions on Python', '1 tutoring session on React']
+            milestones: jobSkills.slice(0, 2).map(skill => `Complete ${skill} basics`),
+            platformLearning: jobSkills.slice(0, 2).map(skill => `2 tutoring sessions on ${skill}`)
           },
           {
             name: 'Core Skills (Weeks 3-4)',
-            skills: ['API Design', 'Basic System Design'],
+            skills: jobSkills.slice(2, 4).map(skill => `${skill} Fundamentals`),
             resources: ['CodeMentor AI Tutoring', 'Practice projects', 'Documentation'],
-            milestones: ['Build simple API', 'Design basic system'],
-            platformLearning: ['2 tutoring sessions on API design', '1 tutoring session on system design']
+            milestones: jobSkills.slice(2, 4).map(skill => `Master ${skill} fundamentals`),
+            platformLearning: jobSkills.slice(2, 4).map(skill => `2 tutoring sessions on ${skill}`)
           }
         ];
         estimatedDuration = '2-4 weeks';
@@ -81,24 +213,24 @@ const JobPreparation = () => {
         phases = [
           {
             name: 'Foundation (Weeks 1-3)',
-            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
+            skills: jobSkills.slice(0, 3).map(skill => `${skill} Basics`),
             resources: ['CodeMentor AI Tutoring', 'Online courses', 'Documentation'],
-            milestones: ['Complete Python course', 'Build React app', 'Design database'],
-            platformLearning: ['3 tutoring sessions on Python', '2 tutoring sessions on React', '1 tutoring session on databases']
+            milestones: jobSkills.slice(0, 3).map(skill => `Complete ${skill} course`),
+            platformLearning: jobSkills.slice(0, 3).map(skill => `2 tutoring sessions on ${skill}`)
           },
           {
             name: 'Intermediate (Weeks 4-6)',
-            skills: ['Advanced Python', 'State Management', 'API Design'],
+            skills: jobSkills.slice(3, 5).map(skill => `${skill} Intermediate`),
             resources: ['CodeMentor AI Tutoring', 'Practice projects', 'Code reviews'],
-            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
-            platformLearning: ['2 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '1 tutoring session on API design']
+            milestones: jobSkills.slice(3, 5).map(skill => `Build ${skill} project`),
+            platformLearning: jobSkills.slice(3, 5).map(skill => `2 tutoring sessions on ${skill}`)
           },
           {
             name: 'Advanced (Weeks 7-8)',
-            skills: ['System Design', 'Performance Optimization'],
-            resources: ['CodeMentor AI Tutoring', 'System design books', 'Performance testing'],
-            milestones: ['Design scalable architecture', 'Optimize performance'],
-            platformLearning: ['2 tutoring sessions on system design', '1 tutoring session on performance optimization']
+            skills: jobSkills.slice(5).map(skill => `${skill} Advanced`),
+            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects'],
+            milestones: jobSkills.slice(5).map(skill => `Master ${skill} advanced concepts`),
+            platformLearning: jobSkills.slice(5).map(skill => `2 tutoring sessions on ${skill}`)
           }
         ];
         estimatedDuration = '4-8 weeks';
@@ -106,24 +238,24 @@ const JobPreparation = () => {
         phases = [
           {
             name: 'Foundation (Weeks 1-4)',
-            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
+            skills: jobSkills.slice(0, 3).map(skill => `${skill} Basics`),
             resources: ['CodeMentor AI Tutoring', 'Online courses', 'Practice projects', 'Documentation'],
-            milestones: ['Complete Python course', 'Build simple React app', 'Design database schema'],
-            platformLearning: ['4 tutoring sessions on Python', '3 tutoring sessions on React', '2 tutoring sessions on databases']
+            milestones: jobSkills.slice(0, 3).map(skill => `Complete ${skill} course`),
+            platformLearning: jobSkills.slice(0, 3).map(skill => `3 tutoring sessions on ${skill}`)
           },
           {
             name: 'Intermediate (Weeks 5-8)',
-            skills: ['Advanced Python', 'State Management', 'API Design'],
+            skills: jobSkills.slice(3, 5).map(skill => `${skill} Intermediate`),
             resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Code reviews'],
-            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
-            platformLearning: ['3 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '2 tutoring sessions on API design']
+            milestones: jobSkills.slice(3, 5).map(skill => `Build ${skill} project`),
+            platformLearning: jobSkills.slice(3, 5).map(skill => `3 tutoring sessions on ${skill}`)
           },
           {
             name: 'Advanced (Weeks 9-12)',
-            skills: ['System Design', 'Cloud Services', 'Performance Optimization'],
-            resources: ['CodeMentor AI Tutoring', 'System design books', 'AWS labs', 'Performance testing'],
-            milestones: ['Design scalable architecture', 'Deploy to AWS', 'Optimize performance'],
-            platformLearning: ['3 tutoring sessions on system design', '2 tutoring sessions on cloud services', '1 tutoring session on performance']
+            skills: jobSkills.slice(5).map(skill => `${skill} Advanced`),
+            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Mentoring'],
+            milestones: jobSkills.slice(5).map(skill => `Master ${skill} advanced concepts`),
+            platformLearning: jobSkills.slice(5).map(skill => `3 tutoring sessions on ${skill}`)
           }
         ];
         estimatedDuration = '8-12 weeks';
@@ -131,32 +263,32 @@ const JobPreparation = () => {
         // Default 12-16 weeks
         phases = [
           {
-            name: 'Foundation (Weeks 1-4)',
-            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
+            name: 'Foundation (Weeks 1-6)',
+            skills: jobSkills.slice(0, 4).map(skill => `${skill} Basics`),
             resources: ['CodeMentor AI Tutoring', 'Online courses', 'Practice projects', 'Documentation'],
-            milestones: ['Complete Python course', 'Build simple React app', 'Design database schema'],
-            platformLearning: ['4 tutoring sessions on Python', '3 tutoring sessions on React', '2 tutoring sessions on databases']
+            milestones: jobSkills.slice(0, 4).map(skill => `Complete ${skill} course`),
+            platformLearning: jobSkills.slice(0, 4).map(skill => `3 tutoring sessions on ${skill}`)
           },
           {
-            name: 'Intermediate (Weeks 5-8)',
-            skills: ['Advanced Python', 'State Management', 'API Design'],
+            name: 'Intermediate (Weeks 7-10)',
+            skills: jobSkills.slice(4, 6).map(skill => `${skill} Intermediate`),
             resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Code reviews'],
-            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
-            platformLearning: ['3 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '2 tutoring sessions on API design']
+            milestones: jobSkills.slice(4, 6).map(skill => `Build ${skill} project`),
+            platformLearning: jobSkills.slice(4, 6).map(skill => `3 tutoring sessions on ${skill}`)
           },
           {
-            name: 'Advanced (Weeks 9-12)',
-            skills: ['System Design', 'Cloud Services', 'Performance Optimization'],
-            resources: ['CodeMentor AI Tutoring', 'System design books', 'AWS labs', 'Performance testing'],
-            milestones: ['Design scalable architecture', 'Deploy to AWS', 'Optimize performance'],
-            platformLearning: ['3 tutoring sessions on system design', '2 tutoring sessions on cloud services', '1 tutoring session on performance']
+            name: 'Advanced (Weeks 11-14)',
+            skills: jobSkills.slice(6, 8).map(skill => `${skill} Advanced`),
+            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Mentoring'],
+            milestones: jobSkills.slice(6, 8).map(skill => `Master ${skill} advanced concepts`),
+            platformLearning: jobSkills.slice(6, 8).map(skill => `3 tutoring sessions on ${skill}`)
           },
           {
-            name: 'Expertise (Weeks 13-16)',
-            skills: ['Leadership', 'Architecture Patterns', 'Best Practices'],
-            resources: ['CodeMentor AI Tutoring', 'Leadership books', 'Code reviews', 'Mentoring'],
-            milestones: ['Lead technical discussions', 'Implement patterns', 'Mentor others'],
-            platformLearning: ['2 tutoring sessions on leadership', '2 tutoring sessions on architecture', '1 tutoring session on mentoring']
+            name: 'Expertise (Weeks 15-16)',
+            skills: jobSkills.slice(8).map(skill => `${skill} Mastery`),
+            resources: ['CodeMentor AI Tutoring', 'Expert tutorials', 'Real projects', 'Leadership'],
+            milestones: jobSkills.slice(8).map(skill => `Achieve ${skill} mastery`),
+            platformLearning: jobSkills.slice(8).map(skill => `2 tutoring sessions on ${skill}`)
           }
         ];
         estimatedDuration = '12-16 weeks';

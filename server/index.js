@@ -215,6 +215,10 @@ app.get('/api/auth/me', (req, res) => {
   }
   const user = userDatabase.get(currentUserEmail);
   
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+  
   res.json({
     user: {
       _id: user._id,
@@ -234,6 +238,11 @@ app.put('/api/auth/update-profile', (req, res) => {
   }
   const { name } = req.body;
   const user = userDatabase.get(currentUserEmail);
+  
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+  
   if (name && name.trim() !== '') {
     user.name = cleanupName(name);
   }
@@ -258,6 +267,10 @@ app.post('/api/skills/add', (req, res) => {
   
   const { skillName, level = 0 } = req.body;
   const user = userDatabase.get(currentUserEmail);
+  
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
   
   if (!skillName || skillName.trim() === '') {
     return res.status(400).json({ message: 'Skill name is required' });
@@ -291,6 +304,10 @@ app.post('/api/tutoring/start-session', async (req, res) => {
   
   const { topic, skillLevel = 'beginner' } = req.body;
   const user = userDatabase.get(currentUserEmail);
+  
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
   
   if (!topic || topic.trim() === '') {
     return res.status(400).json({ message: 'Topic is required' });
@@ -583,6 +600,29 @@ app.get('/api/dashboard/stats', (req, res) => {
     jobPreps: user.statistics.jobPrepsCreated || 0
   };
   res.json({ stats });
+});
+
+// Add skills endpoint for dashboard
+app.get('/api/dashboard/skills', (req, res) => {
+  console.log('Fetch dashboard skills request');
+  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
+  if (!user) {
+    return res.json({ skills: {} });
+  }
+  
+  // Get skills from user's skill levels
+  const skills = {};
+  if (user.skillLevels) {
+    Object.entries(user.skillLevels).forEach(([skillKey, skillData]) => {
+      skills[skillKey] = {
+        level: skillData.level || 0,
+        lastUpdated: skillData.lastUpdated || new Date(),
+        displayName: skillData.displayName || skillKey.charAt(0).toUpperCase() + skillKey.slice(1)
+      };
+    });
+  }
+  
+  res.json({ skills });
 });
 
 // Add activity endpoint for testing
