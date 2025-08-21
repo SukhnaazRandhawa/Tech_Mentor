@@ -8,15 +8,15 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorView } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import {
-  AlertCircle,
-  BookOpen,
-  ChevronLeft,
-  Code,
-  MessageSquare,
-  Play,
-  Save,
-  Send,
-  Square
+    AlertCircle,
+    BookOpen,
+    ChevronLeft,
+    Code,
+    MessageSquare,
+    Play,
+    Save,
+    Send,
+    Square
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -369,7 +369,7 @@ public class HelloWorld {
     
     try {
       const token = localStorage.getItem('token');
-      await fetch('/api/tutoring/end-session', {
+      const response = await fetch('/api/tutoring/end-session', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -378,10 +378,19 @@ public class HelloWorld {
         body: JSON.stringify({ sessionId: session.id })
       });
       
-      navigate('/dashboard');
+      if (response.ok) {
+        console.log('Session ended successfully');
+        navigate('/');
+      } else {
+        const errorData = await response.json();
+        console.error('Server error ending session:', errorData);
+        // Still navigate to dashboard even if there's an error
+        navigate('/');
+      }
     } catch (error) {
       console.error('Error ending session:', error);
-      navigate('/dashboard'); // Navigate anyway
+      // Navigate anyway to prevent the user from being stuck
+      navigate('/');
     }
   };
   
@@ -512,7 +521,7 @@ public class HelloWorld {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <button
-              onClick={() => navigate('/dashboard')}
+                              onClick={() => navigate('/')}
               className="text-secondary-600 hover:text-secondary-800"
             >
               <ChevronLeft className="h-5 w-5" />

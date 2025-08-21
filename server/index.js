@@ -436,41 +436,59 @@ app.post('/api/tutoring/execute-code', async (req, res) => {
 app.post('/api/tutoring/end-session', (req, res) => {
   console.log('End tutoring session request:', req.body);
   
-  if (!currentUserEmail) {
-    return res.status(401).json({ message: 'Not authenticated' });
-  }
-  
-  const { sessionId } = req.body;
-  const user = userDatabase.get(currentUserEmail);
-  
-  if (!sessionId) {
-    return res.status(400).json({ message: 'Session ID is required' });
-  }
-  
-  // Find and end session
-  if (user.tutoringSessions) {
-    const session = user.tutoringSessions.find(s => s.id === sessionId);
-    if (session) {
-      session.status = 'completed';
-      session.endTime = new Date();
-      
-      // Calculate session duration
-      const duration = session.endTime - session.startTime;
-      session.duration = Math.round(duration / 1000 / 60); // in minutes
-      
-      // Update user statistics
-      if (!user.statistics) user.statistics = {};
-      user.statistics.totalStudyTime = (user.statistics.totalStudyTime || 0) + session.duration;
-      user.statistics.lessonsCompleted = (user.statistics.lessonsCompleted || 0) + 1;
-      
-      console.log(`Tutoring session ended: ${session.topic} for ${user.name} (${session.duration} minutes)`);
+  try {
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
     }
+    
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ message: 'Session ID is required' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      console.error('User not found for email:', currentUserEmail);
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Find and end session
+    if (user.tutoringSessions) {
+      const session = user.tutoringSessions.find(s => s.id === sessionId);
+      if (session) {
+        session.status = 'completed';
+        session.endTime = new Date();
+        
+        // Calculate session duration
+        const duration = session.endTime - session.startTime;
+        session.duration = Math.round(duration / 1000 / 60); // in minutes
+        
+        // Update user statistics
+        if (!user.statistics) user.statistics = {};
+        user.statistics.totalStudyTime = (user.statistics.totalStudyTime || 0) + session.duration;
+        user.statistics.lessonsCompleted = (user.statistics.lessonsCompleted || 0) + 1;
+        
+        console.log(`Tutoring session ended: ${session.topic} for ${user.name} (${session.duration} minutes)`);
+        
+        res.json({
+          message: 'Tutoring session ended successfully',
+          session: session
+        });
+      } else {
+        console.error('Session not found:', sessionId);
+        res.status(404).json({ message: 'Session not found' });
+      }
+    } else {
+      console.error('No tutoring sessions found for user');
+      res.status(404).json({ message: 'No tutoring sessions found' });
+    }
+  } catch (error) {
+    console.error('Error ending tutoring session:', error);
+    res.status(500).json({ 
+      message: 'Failed to end tutoring session',
+      error: error.message 
+    });
   }
-  
-  res.json({
-    message: 'Tutoring session ended successfully',
-    session: user.tutoringSessions?.find(s => s.id === sessionId)
-  });
 });
 
 // Get all skills for current user
