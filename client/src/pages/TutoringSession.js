@@ -515,67 +515,68 @@ public class HelloWorld {
   }
   
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="bg-white border-b border-secondary-200 px-6 py-4">
+      <div className="bg-white border-b border-secondary-200 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             <button
-                              onClick={() => navigate('/')}
-              className="text-secondary-600 hover:text-secondary-800"
+              onClick={() => navigate('/')}
+              className="text-secondary-600 hover:text-secondary-800 p-1 sm:p-0"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
             <div>
-              <h1 className="text-xl font-semibold text-secondary-900">
+              <h1 className="text-lg sm:text-xl font-semibold text-secondary-900">
                 {session?.topic} Tutoring
               </h1>
-              <p className="text-sm text-secondary-600">
+              <p className="text-xs sm:text-sm text-secondary-600">
                 Skill Level: {skillLevel.charAt(0).toUpperCase() + skillLevel.slice(1)}
               </p>
             </div>
           </div>
           
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-3">
             <button
               onClick={saveSession}
-              className="text-secondary-600 hover:text-secondary-800 p-2 rounded-md hover:bg-secondary-100"
+              className="text-secondary-600 hover:text-secondary-800 p-1 sm:p-2 rounded-md hover:bg-secondary-100"
               title="Save Session"
             >
-              <Save className="h-5 w-5" />
+              <Save className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
             <button
               onClick={endSession}
-              className="btn-secondary flex items-center"
+              className="btn-secondary flex items-center text-sm px-2 py-1 sm:px-3 sm:py-2"
             >
-              <Square className="h-4 w-4 mr-2" />
-              End Session
+              <Square className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">End Session</span>
+              <span className="sm:hidden">End</span>
             </button>
           </div>
         </div>
       </div>
       
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left Panel - Chat */}
-        <div className="w-1/2 flex flex-col border-r border-secondary-200">
+        <div className="w-full lg:w-1/2 flex flex-col border-b lg:border-b-0 lg:border-r border-secondary-200">
           {/* Chat Header */}
-          <div className="bg-secondary-50 px-4 py-3 border-b border-secondary-200">
-            <h3 className="font-medium text-secondary-900 flex items-center">
+          <div className="bg-secondary-50 px-3 sm:px-4 py-3 border-b border-secondary-200">
+            <h3 className="font-medium text-secondary-900 flex items-center text-sm sm:text-base">
               <MessageSquare className="h-4 w-4 mr-2" />
               AI Tutor Chat
             </h3>
           </div>
           
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
             {conversation.map((msg) => (
               <div
                 key={msg.id}
                 className={`flex ${msg.speaker === 'student' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                  className={`max-w-[85%] sm:max-w-xs lg:max-w-md px-3 sm:px-4 py-2 rounded-lg ${
                     msg.speaker === 'student'
                       ? 'bg-primary-600 text-white'
                       : 'bg-secondary-100 text-secondary-900'
@@ -614,7 +615,7 @@ public class HelloWorld {
           </div>
           
           {/* Chat Input */}
-          <div className="p-4 border-t border-secondary-200">
+          <div className="p-3 sm:p-4 border-t border-secondary-200">
             <div className="flex space-x-2">
               <input
                 type="text"
@@ -622,13 +623,13 @@ public class HelloWorld {
                 onChange={(e) => setCurrentMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !isSendingMessage && sendMessage()}
                 placeholder="Ask your AI tutor a question..."
-                className="input-field flex-1"
+                className="input-field flex-1 text-sm"
                 disabled={isSendingMessage}
               />
               <button
                 onClick={sendMessage}
                 disabled={!currentMessage.trim() || isSendingMessage}
-                className="btn-primary px-4"
+                className="btn-primary px-3 sm:px-4 py-2"
               >
                 {isSendingMessage ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -641,10 +642,10 @@ public class HelloWorld {
         </div>
         
         {/* Right Panel - Code Editor & Execution */}
-        <div className="w-1/2 flex flex-col">
+        <div className="w-full lg:w-1/2 flex flex-col">
           {/* Code Editor Header */}
-          <div className="bg-secondary-50 px-4 py-3 border-b border-secondary-200">
-            <div className="flex items-center justify-between">
+          <div className="bg-secondary-50 px-3 sm:px-4 py-3 border-b border-secondary-200">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
               <h3 className="font-medium text-secondary-900 flex items-center">
                 <Code className="h-4 w-4 mr-2" />
                 Code Editor
@@ -653,7 +654,7 @@ public class HelloWorld {
                 <select
                   value={language}
                   onChange={(e) => changeLanguage(e.target.value)}
-                  className="text-sm border border-secondary-300 rounded px-2 py-1 bg-white"
+                  className="text-sm border border-secondary-300 rounded px-2 py-1 bg-white flex-1 sm:flex-none"
                 >
                   {supportedLanguages.map((lang) => (
                     <option key={lang.value} value={lang.value}>
@@ -664,7 +665,7 @@ public class HelloWorld {
                 <button
                   onClick={executeCode}
                   disabled={isExecuting || !code.trim() || language === 'html'}
-                  className="btn-primary px-3 py-1 text-sm flex items-center"
+                  className="btn-primary px-2 sm:px-3 py-1 text-sm flex items-center"
                   title={language === 'html' ? 'HTML execution not supported' : 'Run code'}
                 >
                   {isExecuting ? (
@@ -672,7 +673,7 @@ public class HelloWorld {
                   ) : (
                     <>
                       <Play className="h-4 w-4 mr-1" />
-                      Run
+                      <span className="hidden sm:inline">Run</span>
                     </>
                   )}
                 </button>
@@ -682,33 +683,33 @@ public class HelloWorld {
           
           {/* Code Editor */}
           <div className="flex-1 bg-secondary-900">
-            <div ref={editorRef} className="h-full" />
+            <div ref={editorRef} className="h-full min-h-[300px] sm:min-h-[400px]" />
           </div>
           
           {/* Execution Results */}
           {executionResult && (
-            <div className="bg-secondary-50 border-t border-secondary-200 p-4 max-h-64 overflow-y-auto">
+            <div className="bg-secondary-50 border-t border-secondary-200 p-3 sm:p-4 max-h-48 sm:max-h-64 overflow-y-auto">
               <h4 className="font-medium text-secondary-900 mb-2 flex items-center">
                 <Play className="h-4 w-4 mr-2" />
-                Execution Results
+                <span className="text-sm sm:text-base">Execution Results</span>
               </h4>
               
               {executionResult.error ? (
                 <div className="bg-red-50 border border-red-200 rounded p-3">
-                  <p className="text-red-800 text-sm">
+                  <p className="text-red-800 text-sm break-words">
                     <strong>Error:</strong> {executionResult.error}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <div className="bg-white border border-secondary-200 rounded p-3">
-                    <p className="text-secondary-900 text-sm font-medium">Output:</p>
-                    <pre className="text-secondary-700 text-sm mt-1 whitespace-pre-wrap">
+                    <p className="text-secondary-700 text-sm font-medium">Output:</p>
+                    <pre className="text-secondary-700 text-sm mt-1 whitespace-pre-wrap break-words overflow-x-auto">
                       {executionResult.output || 'No output'}
                     </pre>
                   </div>
                   
-                  <div className="flex space-x-4 text-xs text-secondary-600">
+                  <div className="flex flex-wrap gap-2 sm:gap-4 text-xs text-secondary-600">
                     <span>Time: {executionResult.executionTime}</span>
                     <span>Memory: {executionResult.memory}</span>
                     <span>Status: {executionResult.status}</span>
