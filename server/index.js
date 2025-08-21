@@ -282,7 +282,7 @@ app.post('/api/skills/add', (req, res) => {
 });
 
 // AI Tutoring System Endpoints
-app.post('/api/tutoring/start-session', (req, res) => {
+app.post('/api/tutoring/start-session', async (req, res) => {
   console.log('Start tutoring session request:', req.body);
   
   if (!currentUserEmail) {
@@ -316,9 +316,13 @@ app.post('/api/tutoring/start-session', (req, res) => {
   
   console.log(`Tutoring session started: ${topic} for ${user.name}`);
   
+  // Generate welcome message for the session
+  const welcomeMessage = await generateWelcomeMessage(topic, skillLevel, user);
+  
   res.json({
     message: 'Tutoring session started successfully',
-    session: session
+    session: session,
+    aiResponse: welcomeMessage
   });
 });
 
@@ -629,6 +633,78 @@ function formatTimestamp(date) {
   }
 }
 
+// Generate welcome message when session starts
+async function generateWelcomeMessage(topic, skillLevel, user) {
+  try {
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    
+    if (!openaiApiKey) {
+      // Fallback welcome message
+      return {
+        message: `Hello ${user.name}! Welcome to your ${topic} tutoring session. I'm excited to help you learn at the ${skillLevel} level. What specific aspect of ${topic} would you like to explore first?`,
+        concepts: ['session start', topic.toLowerCase()],
+        hints: ['Ask specific questions', 'Share your current knowledge', 'Tell me what you want to learn']
+      };
+    }
+    
+    // Real OpenAI API call for welcome message
+    const prompt = `You are a friendly, encouraging computer science tutor. The student ${user.name} has just started a tutoring session about ${topic} at ${skillLevel} level. 
+    
+    Generate a warm, welcoming first message that:
+    1. Greets them by name
+    2. Shows enthusiasm about their chosen topic
+    3. Asks 2-3 thoughtful questions to assess their current knowledge and goals
+    4. Is encouraging and sets a positive tone for learning
+    5. Is conversational and not repetitive
+    
+    Keep it under 150 words and make it feel natural, not like a template.`;
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a warm, encouraging computer science tutor who creates personalized welcome messages.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 200,
+        temperature: 0.8
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const aiMessage = data.choices[0].message.content;
+    
+    return {
+      message: aiMessage,
+      concepts: [topic.toLowerCase(), 'session start'],
+      hints: ['Ask specific questions', 'Share your current knowledge', 'Tell me what you want to learn']
+    };
+    
+  } catch (error) {
+    console.error('OpenAI API error for welcome message, using fallback:', error);
+    return {
+      message: `Hello ${user.name}! Welcome to your ${topic} tutoring session. I'm excited to help you learn at the ${skillLevel} level. What specific aspect of ${topic} would you like to explore first?`,
+      concepts: ['session start', topic.toLowerCase()],
+      hints: ['Ask specific questions', 'Share your current knowledge', 'Tell me what you want to learn']
+    };
+  }
+}
+
 // AI Tutoring Helper Functions
 async function generateTutoringResponse(studentMessage, codeSnippet, skillLevel, user) {
   try {
@@ -654,7 +730,16 @@ async function generateTutoringResponse(studentMessage, codeSnippet, skillLevel,
         messages: [
           {
             role: 'system',
-            content: 'You are a Socratic computer science tutor. Use guided discovery, ask questions, and help students learn through exploration. Be encouraging and patient.'
+            content: `You are a Socratic computer science tutor helping ${user.name} learn. IMPORTANT RULES:
+1. NEVER start responses with "Hello ${user.name}" or similar greetings
+2. Be conversational and natural, not repetitive
+3. Use guided discovery and ask thoughtful questions
+4. If the student shares code, analyze it and provide specific feedback
+5. If no code is shared, focus on conceptual explanations
+6. Be encouraging and patient
+7. Keep responses concise but helpful (under 200 words)
+8. Remember this is an ongoing conversation - don't restart or repeat yourself
+9. Build on previous messages and maintain context`
           },
           {
             role: 'user',
@@ -756,6 +841,33 @@ function generateSmartMockResponse(studentMessage, codeSnippet, skillLevel, user
   return levelResponses[skillLevel] || levelResponses.beginner;
 }
 
+// Check if code is sample/template code
+function isSampleCode(code) {
+  if (!code || typeof code !== 'string') return false;
+  
+  const samplePatterns = [
+    /# Welcome to .* tutoring!/i,
+    /# Start coding here/i,
+    /def hello_world\(\):/,
+    /function helloWorld\(\)/,
+    /console\.log\("Hello, World!"\)/,
+    /print\("Hello, World!"\)/,
+    /public class HelloWorld/,
+    /#include <stdio\.h>/,
+    /int main\(\)/,
+    /hello_world\(\)/,
+    /helloWorld\(\)/
+  ];
+  
+  // Check if it's the exact sample code
+  const trimmedCode = code.trim();
+  const isExactSample = trimmedCode.includes('# Welcome to Python tutoring!') && 
+                        trimmedCode.includes('def hello_world()') &&
+                        trimmedCode.includes('print("Hello, World!")');
+  
+  return isExactSample || samplePatterns.some(pattern => pattern.test(code));
+}
+
 // Create intelligent prompt for OpenAI
 function createTutoringPrompt(studentMessage, codeSnippet, skillLevel, user) {
   let prompt = `You are a Socratic computer science tutor helping a ${skillLevel} level student.
@@ -763,19 +875,33 @@ function createTutoringPrompt(studentMessage, codeSnippet, skillLevel, user) {
 Student's question: "${studentMessage}"
 
 Student's skill level: ${skillLevel}
-Student's name: ${user?.name || 'Student'}`;
+Student's name: ${user?.name || 'Student'}
+
+IMPORTANT: This is an ongoing conversation. The student has already told you about their interest in Machine Learning and their goals. Don't ask them to repeat information they've already shared. Build on what they've said and provide specific, helpful guidance.`;
 
   if (codeSnippet) {
-    prompt += `\n\nStudent's code:\n\`\`\`${codeSnippet}\`\`\``;
+    // Check if this is sample code or actual user code
+    const isSampleCodeResult = isSampleCode(codeSnippet);
+    
+    if (isSampleCodeResult) {
+      prompt += `\n\nNote: The student has sample code in their editor (this is starter code, not their own work):
+\`\`\`${codeSnippet}\`\`\`
+
+IMPORTANT: This is starter/template code, not code the student wrote. Don't assume they understand it yet.`;
+    } else {
+      prompt += `\n\nStudent's code:\n\`\`\`${codeSnippet}\`\`\``;
+    }
   }
 
   prompt += `\n\nProvide a helpful, encouraging response that:
 1. Uses Socratic teaching (ask guiding questions, don't give direct answers)
 2. Is appropriate for ${skillLevel} level
 3. Relates to the specific question asked
-4. If code is provided, analyze it and ask relevant questions
-5. Keep response under 200 words
-6. Be encouraging and patient
+4. If sample code is shown, help them understand it or encourage them to write their own
+5. If user's own code is provided, analyze it and ask relevant questions
+6. Keep response under 200 words
+7. Be encouraging and patient
+8. NEVER start with "Hello [name]" or similar greetings
 
 Response:`;
 
@@ -800,11 +926,38 @@ function extractConcepts(aiMessage) {
 
 // Extract hints from AI response
 function extractHints(aiMessage) {
-  // Simple hint extraction - look for question marks and suggestions
-  const sentences = aiMessage.split(/[.!?]+/).filter(s => s.trim().length > 10);
-  const hints = sentences.slice(0, 2).map(s => s.trim());
+  // Look for actual helpful hints, not just random sentences
+  const helpfulPatterns = [
+    /try\s+([^.]+)/gi,
+    /think\s+about\s+([^.]+)/gi,
+    /consider\s+([^.]+)/gi,
+    /ask\s+yourself\s+([^.]+)/gi,
+    /remember\s+([^.]+)/gi,
+    /focus\s+on\s+([^.]+)/gi,
+    /start\s+with\s+([^.]+)/gi
+  ];
   
-  return hints.length > 0 ? hints : ['Think about the problem step by step', 'Ask specific questions'];
+  const hints = [];
+  
+  helpfulPatterns.forEach(pattern => {
+    const matches = aiMessage.match(pattern);
+    if (matches) {
+      matches.forEach(match => {
+        const hint = match.replace(/^(try|think about|consider|ask yourself|remember|focus on|start with)\s+/i, '').trim();
+        if (hint.length > 10 && hint.length < 100) {
+          hints.push(hint);
+        }
+      });
+    }
+  });
+  
+  // If no helpful hints found, provide generic ones
+  if (hints.length === 0) {
+    return ['Think about the problem step by step', 'Ask specific questions'];
+  }
+  
+  // Return up to 2 most relevant hints
+  return hints.slice(0, 2);
 }
 
 async function executeCode(code, language) {
