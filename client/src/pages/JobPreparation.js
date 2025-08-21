@@ -10,6 +10,8 @@ const JobPreparation = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [learningPath, setLearningPath] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedLearningPaths, setSavedLearningPaths] = useState([]);
 
   const analyzeJob = async () => {
     if (!jobDescription.trim() || !jobTitle.trim()) {
@@ -174,6 +176,73 @@ const JobPreparation = () => {
     }
   };
 
+  const saveLearningPath = async () => {
+    if (!learningPath || !analysisResult) return;
+    
+    setIsSaving(true);
+    
+    try {
+      // Create a comprehensive learning path object
+      const pathToSave = {
+        id: Date.now(),
+        jobTitle: jobTitle,
+        company: company || 'Unknown Company',
+        dateCreated: new Date().toISOString(),
+        preparationTime: preparationTime,
+        analysisResult: analysisResult,
+        learningPath: learningPath,
+        progress: {
+          overallProgress: 0,
+          skills: analysisResult.requiredSkills.map(skill => ({
+            name: skill.name,
+            requiredLevel: skill.level,
+            currentLevel: 0, // Will be updated based on tutoring sessions
+            progress: 0,
+            status: 'not-started', // not-started, in-progress, completed
+            tutoringSessions: 0,
+            lastUpdated: new Date().toISOString()
+          }))
+        }
+      };
+      
+      // Save to localStorage
+      const existingPaths = JSON.parse(localStorage.getItem('savedLearningPaths') || '[]');
+      existingPaths.push(pathToSave);
+      localStorage.setItem('savedLearningPaths', JSON.stringify(existingPaths));
+      
+      // Update state
+      setSavedLearningPaths(existingPaths);
+      
+      // Also save to a general progress tracking
+      const userProgress = JSON.parse(localStorage.getItem('userSkillProgress') || '{}');
+      
+      analysisResult.requiredSkills.forEach(skill => {
+        if (!userProgress[skill.name]) {
+          userProgress[skill.name] = {
+            currentLevel: 0,
+            totalSessions: 0,
+            lastSession: null,
+            masteryLevel: 0, // 0-100%
+            jobsApplied: []
+          };
+        }
+        // Add this job to the skill's job list
+        if (!userProgress[skill.name].jobsApplied.includes(jobTitle)) {
+          userProgress[skill.name].jobsApplied.push(jobTitle);
+        }
+      });
+      
+      localStorage.setItem('userSkillProgress', JSON.stringify(userProgress));
+      
+      alert('Learning path saved successfully! Your progress will now be tracked.');
+    } catch (error) {
+      console.error('Error saving learning path:', error);
+      alert('Failed to save learning path. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const getProjectSuggestions = (skillName) => {
     const projectDatabase = {
       'Python': [
@@ -285,6 +354,16 @@ const JobPreparation = () => {
         console.error('Error loading saved job data:', error);
       }
     }
+    
+    // Load saved learning paths
+    const savedPaths = localStorage.getItem('savedLearningPaths');
+    if (savedPaths) {
+      try {
+        setSavedLearningPaths(JSON.parse(savedPaths));
+      } catch (error) {
+        console.error('Error loading saved learning paths:', error);
+      }
+    }
   }, []);
 
   return (
@@ -334,6 +413,15 @@ const JobPreparation = () => {
         >
           <Rocket className="h-4 w-4 inline mr-2" />
           Projects
+        </button>
+        <button
+          onClick={() => setActiveTab('saved')}
+          className={`px-4 py-2 mx-1 mb-2 rounded-lg font-medium ${
+            activeTab === 'saved' ? 'bg-primary-600 text-white' : 'bg-secondary-100 text-secondary-700'
+          }`}
+        >
+          <BookOpen className="h-4 w-4 inline mr-2" />
+          Saved Paths
         </button>
       </div>
 
@@ -530,10 +618,28 @@ const JobPreparation = () => {
                 </h2>
                 
                 <div className="text-center mb-6">
-                  <div className="inline-flex items-center px-4 py-2 bg-primary-100 text-primary-800 rounded-full">
+                  <div className="inline-flex items-center px-4 py-2 bg-primary-100 text-primary-800 rounded-full mb-4">
                     <Clock className="h-4 w-4 mr-2" />
                     Estimated Duration: {learningPath.estimatedDuration}
                   </div>
+                  
+                  <button
+                    onClick={saveLearningPath}
+                    disabled={isSaving}
+                    className="btn-primary px-6 py-2"
+                  >
+                    {isSaving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <BookOpen className="h-4 w-4 mr-2" />
+                        Save Learning Path
+                      </>
+                    )}
+                  </button>
                 </div>
 
                 <div className="space-y-6">
@@ -702,6 +808,105 @@ const JobPreparation = () => {
                 </button>
               </div>
                          )}
+                      </div>
+                    </div>
+                  )}
+
+      {/* Saved Learning Paths Tab */}
+      {activeTab === 'saved' && (
+        <div className="max-w-6xl mx-auto">
+          <div className="card">
+            <h2 className="text-2xl font-bold text-secondary-900 mb-6">
+              Saved Learning Paths
+            </h2>
+            
+            {savedLearningPaths.length > 0 ? (
+              <div className="space-y-6">
+                {savedLearningPaths.map((path) => (
+                  <div key={path.id} className="border border-secondary-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-semibold text-secondary-900">
+                          {path.jobTitle}
+                        </h3>
+                        <p className="text-secondary-600">{path.company}</p>
+                        <p className="text-sm text-secondary-500">
+                          Created: {new Date(path.dateCreated).toLocaleDateString()}
+                        </p>
+                      </div>
+                      
+                      <div className="text-right">
+                        <div className="text-lg font-semibold text-primary-600">
+                          {path.progress.overallProgress}%
+                        </div>
+                        <div className="text-sm text-secondary-600">Overall Progress</div>
+                      </div>
+                    </div>
+                    
+                    <div className="mb-4">
+                      <h4 className="font-medium text-secondary-900 mb-2">Skills Progress</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {path.progress.skills.map((skill, index) => (
+                          <div key={index} className="bg-secondary-50 p-3 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium text-secondary-900">{skill.name}</span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                skill.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                skill.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {skill.status === 'completed' ? 'Completed' :
+                                 skill.status === 'in-progress' ? 'In Progress' : 'Not Started'}
+                              </span>
+                            </div>
+                            
+                            <div className="text-sm text-secondary-600 mb-2">
+                              Level: {skill.currentLevel}/{skill.requiredLevel}
+                            </div>
+                            
+                            <div className="w-full bg-secondary-200 rounded-full h-2">
+                              <div 
+                                className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${skill.progress}%` }}
+                              ></div>
+                            </div>
+                            
+                            <div className="text-xs text-secondary-500 mt-1">
+                              {skill.tutoringSessions} tutoring sessions
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="flex space-x-2">
+                      <button className="btn-secondary text-sm">
+                        View Details
+                      </button>
+                      <button className="btn-primary text-sm">
+                        Continue Learning
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <BookOpen className="h-16 w-16 text-secondary-400 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-secondary-900 mb-2">
+                  No Saved Learning Paths
+                </h3>
+                <p className="text-secondary-600 mb-4">
+                  Save a learning path after generating it to track your progress.
+                </p>
+                <button
+                  onClick={() => setActiveTab('analysis')}
+                  className="btn-primary"
+                >
+                  Create Learning Path
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

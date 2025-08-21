@@ -12,6 +12,7 @@ import {
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { getOverallProgress, getSkillsForDashboard } from '../utils/skillProgressTracker';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -20,6 +21,7 @@ const Dashboard = () => {
   const [stats, setStats] = useState({});
   const [recentSessions, setRecentSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dashboardSkills, setDashboardSkills] = useState([]);
 
   // Fetch dashboard data from backend
   useEffect(() => {
@@ -54,6 +56,17 @@ const Dashboard = () => {
           const sessionsData = await sessionsResponse.json();
           setRecentSessions(sessionsData.sessions.slice(0, 3)); // Show last 3 sessions
         }
+        
+        // Load skill progress data from localStorage
+        const skills = getSkillsForDashboard();
+        setDashboardSkills(skills);
+        
+        // Update stats with skill progress
+        const overallProgress = getOverallProgress();
+        setStats(prev => ({
+          ...prev,
+          overallProgress: overallProgress
+        }));
         
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -223,23 +236,36 @@ const Dashboard = () => {
             </p>
             
             <div className="space-y-6">
-              {Object.keys(user?.skillLevels || {}).length > 0 ? (
-                Object.keys(user.skillLevels).map((skill) => (
-                  <div key={skill} className="space-y-2">
+              {dashboardSkills.length > 0 ? (
+                dashboardSkills.map((skill) => (
+                  <div key={skill.name} className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-secondary-700">
-                        {getSkillDisplayName(skill)}
+                        {getSkillDisplayName(skill.name)}
                       </span>
-                      <span className={`text-sm font-semibold ${getSkillColor(getSkillLevel(skill))}`}>
-                        Level {getSkillLevel(skill)}/10
+                      <span className={`text-sm font-semibold ${getSkillColor(skill.currentLevel)}`}>
+                        Level {skill.currentLevel}/10
                       </span>
                     </div>
+                    
                     <div className="progress-bar">
                       <div 
                         className="progress-fill" 
-                        style={{ width: `${getSkillProgress(skill)}%` }}
+                        style={{ width: `${skill.masteryLevel}%` }}
                       ></div>
                     </div>
+                    
+                    <div className="flex items-center justify-between text-xs text-secondary-500">
+                      <span>{skill.totalSessions} tutoring sessions</span>
+                      <span>{skill.masteryLevel}% mastery</span>
+                    </div>
+                    
+                    {skill.jobsApplied.length > 0 && (
+                      <div className="text-xs text-secondary-400">
+                        Applied to: {skill.jobsApplied.slice(0, 2).join(', ')}
+                        {skill.jobsApplied.length > 2 && ` +${skill.jobsApplied.length - 2} more`}
+                      </div>
+                    )}
                   </div>
                 ))
               ) : (
@@ -249,7 +275,7 @@ const Dashboard = () => {
                     Start learning to see your progress here
                   </p>
                   <p className="text-xs text-secondary-400">
-                    💡 <Link to="/profile" className="text-primary-500 hover:text-primary-600 underline">Go to Profile</Link> to add skills you want to learn
+                    💡 <Link to="/job-prep" className="text-primary-500 hover:text-primary-600 underline">Go to Job Prep</Link> to create learning paths and track skills
                   </p>
                 </div>
               )}
@@ -433,9 +459,9 @@ const Dashboard = () => {
             <Briefcase className="h-6 w-6 text-yellow-600" />
           </div>
           <h3 className="text-2xl font-bold text-secondary-900 mb-1">
-            {stats.jobPreps || 0}
+            {dashboardSkills.length || 0}
           </h3>
-          <p className="text-sm text-secondary-600">Job Preps</p>
+          <p className="text-sm text-secondary-600">Skills Tracked</p>
         </div>
       </div>
     </div>
