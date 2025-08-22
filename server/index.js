@@ -215,10 +215,6 @@ app.get('/api/auth/me', (req, res) => {
   }
   const user = userDatabase.get(currentUserEmail);
   
-  if (!user) {
-    return res.status(404).json({ message: 'User not found' });
-  }
-  
   res.json({
     user: {
       _id: user._id,
@@ -238,11 +234,6 @@ app.put('/api/auth/update-profile', (req, res) => {
   }
   const { name } = req.body;
   const user = userDatabase.get(currentUserEmail);
-  
-  if (!user) {
-    return res.status(404).json({ message: 'User not found' });
-  }
-  
   if (name && name.trim() !== '') {
     user.name = cleanupName(name);
   }
@@ -267,10 +258,6 @@ app.post('/api/skills/add', (req, res) => {
   
   const { skillName, level = 0 } = req.body;
   const user = userDatabase.get(currentUserEmail);
-  
-  if (!user) {
-    return res.status(404).json({ message: 'User not found' });
-  }
   
   if (!skillName || skillName.trim() === '') {
     return res.status(400).json({ message: 'Skill name is required' });
@@ -304,10 +291,6 @@ app.post('/api/tutoring/start-session', async (req, res) => {
   
   const { topic, skillLevel = 'beginner' } = req.body;
   const user = userDatabase.get(currentUserEmail);
-  
-  if (!user) {
-    return res.status(404).json({ message: 'User not found' });
-  }
   
   if (!topic || topic.trim() === '') {
     return res.status(400).json({ message: 'Topic is required' });
@@ -560,6 +543,211 @@ app.get('/api/tutoring/sessions/:sessionId', (req, res) => {
   res.json({ session });
 });
 
+// AI-powered job analysis endpoint
+app.post('/api/job-prep/analyze', async (req, res) => {
+  try {
+    const { jobTitle, jobDescription, company, preparationTime } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    if (!jobTitle || !jobDescription) {
+      return res.status(400).json({ message: 'Job title and description are required' });
+    }
+    
+    // Use AI to analyze the job
+    const analysis = await analyzeJobWithAI(jobTitle, jobDescription, company, preparationTime);
+    
+    res.json(analysis);
+  } catch (error) {
+    console.error('Error analyzing job:', error);
+    res.status(500).json({ message: 'Failed to analyze job', error: error.message });
+  }
+});
+
+// Generate personalized learning path endpoint
+app.post('/api/job-prep/generate-path', async (req, res) => {
+  try {
+    const { jobAnalysis, preparationTime, userCurrentSkills } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    if (!jobAnalysis || !preparationTime) {
+      return res.status(400).json({ message: 'Job analysis and preparation time are required' });
+    }
+    
+    // Use AI to generate learning path
+    const learningPath = await generateLearningPathWithAI(jobAnalysis, preparationTime, userCurrentSkills);
+    
+    res.json(learningPath);
+  } catch (error) {
+    console.error('Error generating learning path:', error);
+    res.status(500).json({ message: 'Failed to generate learning path', error: error.message });
+  }
+});
+
+// Save learning path endpoint
+app.post('/api/job-prep/save-path', async (req, res) => {
+  try {
+    const { jobTitle, company, preparationTime, analysisResult, learningPath } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Initialize learning paths if not exists
+    if (!user.learningPaths) {
+      user.learningPaths = [];
+    }
+    
+    // Create learning path object
+    const pathToSave = {
+      id: Date.now().toString(),
+      jobTitle,
+      company: company || 'Unknown Company',
+      dateCreated: new Date().toISOString(),
+      preparationTime,
+      analysisResult,
+      learningPath,
+      progress: {
+        overallProgress: 0,
+        skills: analysisResult.requiredSkills.map(skill => ({
+          name: skill.name,
+          requiredLevel: skill.level,
+          currentLevel: 0,
+          progress: 0,
+          status: 'not-started',
+          tutoringSessions: 0,
+          lastUpdated: new Date().toISOString()
+        }))
+      }
+    };
+    
+    // Save to user's learning paths
+    user.learningPaths.push(pathToSave);
+    
+         res.json({ 
+       message: 'Learning path saved successfully', 
+       pathId: pathToSave.id,
+       path: pathToSave 
+     });
+  } catch (error) {
+    console.error('Error saving learning path:', error);
+    res.status(500).json({ message: 'Failed to save learning path', error: error.message });
+  }
+});
+
+// Get user's learning paths endpoint
+app.get('/api/job-prep/paths', (req, res) => {
+  try {
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+         const user = userDatabase.get(currentUserEmail);
+     if (!user) {
+       return res.status(404).json({ message: 'User not found' });
+     }
+     
+     const learningPaths = user.learningPaths || [];
+    
+    res.json({ learningPaths });
+  } catch (error) {
+    console.error('Error fetching learning paths:', error);
+    res.status(500).json({ message: 'Failed to fetch learning paths', error: error.message });
+  }
+});
+
+// Update skill progress endpoint
+app.post('/api/job-prep/update-progress', async (req, res) => {
+  try {
+    const { skillName, sessionData } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Initialize skill progress if not exists
+    if (!user.skillProgress) {
+      user.skillProgress = {};
+    }
+    
+    // Update skill progress
+    if (!user.skillProgress[skillName]) {
+      user.skillProgress[skillName] = {
+        currentLevel: 0,
+        totalSessions: 0,
+        lastSession: null,
+        masteryLevel: 0,
+        sessionHistory: []
+      };
+    }
+    
+    const skill = user.skillProgress[skillName];
+    skill.totalSessions += 1;
+    skill.lastSession = new Date().toISOString();
+    skill.masteryLevel = Math.min(100, skill.totalSessions * 15);
+    skill.currentLevel = Math.min(10, Math.ceil(skill.masteryLevel / 10));
+    
+    // Add session to history
+    skill.sessionHistory.push({
+      date: new Date().toISOString(),
+      topic: sessionData.topic || 'General',
+      duration: sessionData.duration || 0,
+      concepts: sessionData.concepts || []
+    });
+    
+    // Update learning paths progress
+    if (user.learningPaths) {
+      user.learningPaths.forEach(path => {
+        const skillInPath = path.progress.skills.find(s => s.name === skillName);
+        if (skillInPath) {
+          skillInPath.currentLevel = skill.currentLevel;
+          skillInPath.tutoringSessions = skill.totalSessions;
+          skillInPath.progress = skill.masteryLevel;
+          skillInPath.lastUpdated = new Date().toISOString();
+          
+          if (skill.masteryLevel >= 100) {
+            skillInPath.status = 'completed';
+          } else if (skill.masteryLevel > 0) {
+            skillInPath.status = 'in-progress';
+          }
+          
+          // Calculate overall progress
+          const totalSkills = path.progress.skills.length;
+          const completedSkills = path.progress.skills.filter(s => s.status === 'completed').length;
+          const inProgressSkills = path.progress.skills.filter(s => s.status === 'in-progress').length;
+          
+          path.progress.overallProgress = Math.round(
+            ((completedSkills * 100) + (inProgressSkills * 50)) / totalSkills
+          );
+        }
+      });
+    }
+    
+    res.json({ 
+      message: 'Skill progress updated successfully', 
+      skill: user.skillProgress[skillName] 
+    });
+  } catch (error) {
+    console.error('Error updating skill progress:', error);
+    res.status(500).json({ message: 'Failed to update skill progress', error: error.message });
+  }
+});
+
 // Dynamic Dashboard API endpoints
 app.get('/api/dashboard/recent-activity', (req, res) => {
   console.log('Fetch recent activity request');
@@ -600,29 +788,6 @@ app.get('/api/dashboard/stats', (req, res) => {
     jobPreps: user.statistics.jobPrepsCreated || 0
   };
   res.json({ stats });
-});
-
-// Add skills endpoint for dashboard
-app.get('/api/dashboard/skills', (req, res) => {
-  console.log('Fetch dashboard skills request');
-  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
-  if (!user) {
-    return res.json({ skills: {} });
-  }
-  
-  // Get skills from user's skill levels
-  const skills = {};
-  if (user.skillLevels) {
-    Object.entries(user.skillLevels).forEach(([skillKey, skillData]) => {
-      skills[skillKey] = {
-        level: skillData.level || 0,
-        lastUpdated: skillData.lastUpdated || new Date(),
-        displayName: skillData.displayName || skillKey.charAt(0).toUpperCase() + skillKey.slice(1)
-      };
-    });
-  }
-  
-  res.json({ skills });
 });
 
 // Add activity endpoint for testing
@@ -761,6 +926,243 @@ async function generateWelcomeMessage(topic, skillLevel, user) {
       hints: ['Ask specific questions', 'Share your current knowledge', 'Tell me what you want to learn']
     };
   }
+}
+
+// AI-powered job analysis
+async function analyzeJobWithAI(jobTitle, jobDescription, company, preparationTime) {
+  try {
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    
+    if (!openaiApiKey) {
+      return generateFallbackJobAnalysis(jobTitle, jobDescription, company, preparationTime);
+    }
+    
+    // Real OpenAI API call for job analysis
+    const prompt = `You are an expert job analyst and career counselor. Analyze this job posting and provide a detailed analysis:
+
+Job Title: ${jobTitle}
+Company: ${company || 'Not specified'}
+Preparation Time: ${preparationTime}
+Job Description: ${jobDescription}
+
+Please provide:
+1. Required skills with importance levels (high/medium/low) and proficiency levels (1-10)
+2. Experience level (Junior/Mid-Level/Senior)
+3. Estimated salary range
+4. Key learning objectives
+5. Recommended learning approach for the specified preparation time
+
+Format the response as JSON with this structure:
+{
+  "requiredSkills": [
+    {"name": "skill_name", "level": 7, "importance": "high", "description": "why this skill is needed"}
+  ],
+  "experienceLevel": "Junior",
+  "estimatedSalary": "$60k - $80k",
+  "learningObjectives": ["objective1", "objective2"],
+  "learningApproach": "description of how to approach learning"
+}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert job analyst and career counselor. Analyze job descriptions to identify required skills, experience level, and create personalized learning paths.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 1000,
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content;
+    const analysis = JSON.parse(content);
+    
+    return {
+      success: true,
+      analysis: analysis
+    };
+  } catch (error) {
+    console.error('Error analyzing job with AI:', error);
+    return generateFallbackJobAnalysis(jobTitle, jobDescription, company, preparationTime);
+  }
+}
+
+// Generate personalized learning path with AI
+async function generateLearningPathWithAI(jobAnalysis, preparationTime, userCurrentSkills = {}) {
+  try {
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    
+    if (!openaiApiKey) {
+      return generateFallbackLearningPath(jobAnalysis, preparationTime, userCurrentSkills);
+    }
+    
+    // Real OpenAI API call for learning path
+    const prompt = `Create a personalized learning path for this job:
+
+Job Analysis: ${JSON.stringify(jobAnalysis)}
+Preparation Time: ${preparationTime}
+User's Current Skills: ${JSON.stringify(userCurrentSkills)}
+
+Please create a structured learning path with:
+1. Phases based on the preparation time
+2. Specific skills to learn in each phase
+3. Resources and milestones
+4. Platform learning recommendations (tutoring sessions)
+5. Progress tracking milestones
+
+Format as JSON:
+{
+  "title": "Learning Path for [Job Title]",
+  "estimatedDuration": "X weeks",
+  "phases": [
+    {
+      "name": "Phase Name",
+      "skills": ["skill1", "skill2"],
+      "resources": ["resource1", "resource2"],
+      "milestones": ["milestone1", "milestone2"],
+      "platformLearning": ["tutoring session description"],
+      "estimatedWeeks": 2
+    }
+  ]
+}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert learning path designer. Create personalized learning paths based on job requirements, user\'s current skills, and available preparation time.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 1500,
+        temperature: 0.4
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content;
+    const learningPath = JSON.parse(content);
+    
+    return {
+      success: true,
+      learningPath: learningPath
+    };
+  } catch (error) {
+    console.error('Error generating learning path with AI:', error);
+    return generateFallbackLearningPath(jobAnalysis, preparationTime, userCurrentSkills);
+  }
+}
+
+// Fallback functions when OpenAI is unavailable
+function generateFallbackJobAnalysis(jobTitle, jobDescription, company, preparationTime) {
+  const lowerDesc = jobDescription.toLowerCase();
+  const skills = [];
+  
+  // Basic keyword analysis
+  if (lowerDesc.includes('react') || lowerDesc.includes('frontend')) {
+    skills.push({ name: 'React', level: 7, importance: 'high', description: 'Core frontend framework' });
+  }
+  if (lowerDesc.includes('javascript') || lowerDesc.includes('js')) {
+    skills.push({ name: 'JavaScript', level: 8, importance: 'high', description: 'Core programming language' });
+  }
+  if (lowerDesc.includes('python')) {
+    skills.push({ name: 'Python', level: 7, importance: 'high', description: 'Backend development' });
+  }
+  if (lowerDesc.includes('sql') || lowerDesc.includes('database')) {
+    skills.push({ name: 'SQL', level: 6, importance: 'medium', description: 'Database management' });
+  }
+  
+  // Default skills if none found
+  if (skills.length === 0) {
+    skills.push(
+      { name: 'JavaScript', level: 6, importance: 'high', description: 'Essential for web development' },
+      { name: 'HTML/CSS', level: 5, importance: 'medium', description: 'Basic web structure' }
+    );
+  }
+  
+  const experienceLevel = lowerDesc.includes('senior') ? 'Senior' : 
+                         lowerDesc.includes('junior') ? 'Junior' : 'Mid-Level';
+  
+  return {
+    success: false,
+    analysis: {
+      requiredSkills: skills,
+      experienceLevel: experienceLevel,
+      estimatedSalary: '$60k - $90k',
+      learningObjectives: ['Master core technologies', 'Build practical projects'],
+      learningApproach: 'Focus on hands-on practice and real-world projects'
+    }
+  };
+}
+
+function generateFallbackLearningPath(jobAnalysis, preparationTime, userCurrentSkills) {
+  const weeks = parseInt(preparationTime.split('-')[0]);
+  const phases = [];
+  
+  if (weeks <= 4) {
+    phases.push({
+      name: 'Intensive Foundation',
+      skills: jobAnalysis.requiredSkills.slice(0, 2).map(s => s.name),
+      resources: ['CodeMentor AI Tutoring', 'Fast-track courses'],
+      milestones: ['Complete basics', 'Build simple project'],
+      platformLearning: ['2 tutoring sessions per skill'],
+      estimatedWeeks: weeks
+    });
+  } else {
+    const phaseCount = Math.ceil(weeks / 4);
+    for (let i = 0; i < phaseCount; i++) {
+      const startWeek = i * 4 + 1;
+      const endWeek = Math.min((i + 1) * 4, weeks);
+      phases.push({
+        name: `Phase ${i + 1} (Weeks ${startWeek}-${endWeek})`,
+        skills: jobAnalysis.requiredSkills.slice(i * 2, (i + 1) * 2).map(s => s.name),
+        resources: ['CodeMentor AI Tutoring', 'Online courses', 'Practice projects'],
+        milestones: ['Complete phase objectives', 'Build phase project'],
+        platformLearning: ['3-4 tutoring sessions per skill'],
+        estimatedWeeks: endWeek - startWeek + 1
+      });
+    }
+  }
+  
+  return {
+    success: false,
+    learningPath: {
+      title: `Learning Path for ${jobAnalysis.jobTitle || 'Your Role'}`,
+      estimatedDuration: `${weeks} weeks`,
+      phases: phases
+    }
+  };
 }
 
 // AI Tutoring Helper Functions

@@ -22,22 +22,34 @@ const JobPreparation = () => {
     setIsAnalyzing(true);
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Call AI-powered job analysis endpoint
+      const response = await fetch('/api/job-prep/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jobTitle,
+          jobDescription,
+          company,
+          preparationTime
+        }),
+      });
       
-      // Dynamic analysis based on job description
-      const result = analyzeJobDescription(jobDescription);
-      const experienceLevel = determineExperienceLevel(jobDescription);
-      const estimatedSalary = estimateSalary(jobDescription, result.requiredSkills);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       
-      const analysisResult = {
-        requiredSkills: result.requiredSkills,
-        experienceLevel: experienceLevel,
-        estimatedSalary: estimatedSalary,
-        preparationTime: preparationTime
-      };
+      const data = await response.json();
       
-      setAnalysisResult(analysisResult);
+      if (data.success) {
+        // AI analysis successful
+        setAnalysisResult(data.analysis);
+      } else {
+        // Fallback analysis
+        setAnalysisResult(data.analysis);
+      }
+      
       setActiveTab('gaps');
     } catch (error) {
       console.error('Error analyzing job:', error);
@@ -47,135 +59,6 @@ const JobPreparation = () => {
     }
   };
 
-  // Dynamic job analysis functions
-  const analyzeJobDescription = (description) => {
-    const lowerDesc = description.toLowerCase();
-    const skills = [];
-    
-    // Define skill keywords and their importance
-    const skillKeywords = {
-      'python': { name: 'Python', baseLevel: 7, importance: 'high' },
-      'javascript': { name: 'JavaScript', baseLevel: 7, importance: 'high' },
-      'react': { name: 'React', baseLevel: 7, importance: 'high' },
-      'node': { name: 'Node.js', baseLevel: 6, importance: 'medium' },
-      'aws': { name: 'AWS', baseLevel: 6, importance: 'medium' },
-      'azure': { name: 'Azure', baseLevel: 6, importance: 'medium' },
-      'gcp': { name: 'Google Cloud', baseLevel: 6, importance: 'medium' },
-      'docker': { name: 'Docker', baseLevel: 5, importance: 'medium' },
-      'kubernetes': { name: 'Kubernetes', baseLevel: 6, importance: 'medium' },
-      'sql': { name: 'SQL', baseLevel: 6, importance: 'medium' },
-      'mongodb': { name: 'MongoDB', baseLevel: 5, importance: 'medium' },
-      'postgresql': { name: 'PostgreSQL', baseLevel: 5, importance: 'medium' },
-      'java': { name: 'Java', baseLevel: 7, importance: 'high' },
-      'c++': { name: 'C++', baseLevel: 7, importance: 'high' },
-      'c#': { name: 'C#', baseLevel: 6, importance: 'medium' },
-      'go': { name: 'Go', baseLevel: 6, importance: 'medium' },
-      'rust': { name: 'Rust', baseLevel: 6, importance: 'medium' },
-      'html': { name: 'HTML', baseLevel: 5, importance: 'low' },
-      'css': { name: 'CSS', baseLevel: 5, importance: 'low' },
-      'typescript': { name: 'TypeScript', baseLevel: 6, importance: 'medium' },
-      'vue': { name: 'Vue.js', baseLevel: 5, importance: 'medium' },
-      'angular': { name: 'Angular', baseLevel: 6, importance: 'medium' },
-      'system design': { name: 'System Design', baseLevel: 7, importance: 'high' },
-      'microservices': { name: 'Microservices', baseLevel: 6, importance: 'medium' },
-      'api': { name: 'API Design', baseLevel: 6, importance: 'medium' },
-      'rest': { name: 'REST APIs', baseLevel: 5, importance: 'medium' },
-      'graphql': { name: 'GraphQL', baseLevel: 5, importance: 'medium' },
-      'machine learning': { name: 'Machine Learning', baseLevel: 7, importance: 'high' },
-      'ai': { name: 'Artificial Intelligence', baseLevel: 7, importance: 'high' },
-      'data science': { name: 'Data Science', baseLevel: 6, importance: 'medium' },
-      'devops': { name: 'DevOps', baseLevel: 6, importance: 'medium' },
-      'ci/cd': { name: 'CI/CD', baseLevel: 5, importance: 'medium' },
-      'git': { name: 'Git', baseLevel: 5, importance: 'low' },
-      'linux': { name: 'Linux', baseLevel: 5, importance: 'low' },
-      'agile': { name: 'Agile', baseLevel: 4, importance: 'low' },
-      'scrum': { name: 'Scrum', baseLevel: 4, importance: 'low' }
-    };
-    
-    // Check for skills in description
-    Object.entries(skillKeywords).forEach(([keyword, skill]) => {
-      if (lowerDesc.includes(keyword)) {
-        // Adjust level based on context
-        let level = skill.baseLevel;
-        if (lowerDesc.includes('senior') || lowerDesc.includes('lead') || lowerDesc.includes('principal')) {
-          level = Math.min(level + 2, 10);
-        } else if (lowerDesc.includes('junior') || lowerDesc.includes('entry') || lowerDesc.includes('intern')) {
-          level = Math.max(level - 2, 3);
-        }
-        
-        skills.push({
-          name: skill.name,
-          level: level,
-          importance: skill.importance
-        });
-      }
-    });
-    
-    // If no skills found, add some common ones based on job title
-    if (skills.length === 0) {
-      const lowerTitle = jobTitle.toLowerCase();
-      if (lowerTitle.includes('frontend') || lowerTitle.includes('ui')) {
-        skills.push({ name: 'HTML', level: 6, importance: 'medium' });
-        skills.push({ name: 'CSS', level: 6, importance: 'medium' });
-        skills.push({ name: 'JavaScript', level: 7, importance: 'high' });
-      } else if (lowerTitle.includes('backend')) {
-        skills.push({ name: 'Python', level: 6, importance: 'medium' });
-        skills.push({ name: 'SQL', level: 6, importance: 'medium' });
-        skills.push({ name: 'API Design', level: 6, importance: 'medium' });
-      } else if (lowerTitle.includes('fullstack')) {
-        skills.push({ name: 'JavaScript', level: 7, importance: 'high' });
-        skills.push({ name: 'React', level: 6, importance: 'medium' });
-        skills.push({ name: 'Node.js', level: 6, importance: 'medium' });
-      }
-    }
-    
-    return { requiredSkills: skills };
-  };
-
-  const determineExperienceLevel = (description) => {
-    const lowerDesc = description.toLowerCase();
-    
-    if (lowerDesc.includes('senior') || lowerDesc.includes('lead') || lowerDesc.includes('principal') || lowerDesc.includes('architect')) {
-      return 'Senior';
-    } else if (lowerDesc.includes('mid') || lowerDesc.includes('intermediate') || lowerDesc.includes('experienced')) {
-      return 'Mid-Level';
-    } else if (lowerDesc.includes('junior') || lowerDesc.includes('entry') || lowerDesc.includes('intern') || lowerDesc.includes('graduate')) {
-      return 'Junior';
-    } else {
-      return 'Mid-Level'; // Default
-    }
-  };
-
-  const estimateSalary = (description, skills) => {
-    const experienceLevel = determineExperienceLevel(description);
-    const skillCount = skills.length;
-    
-    let baseSalary = 0;
-    switch (experienceLevel) {
-      case 'Junior':
-        baseSalary = 60000;
-        break;
-      case 'Mid-Level':
-        baseSalary = 90000;
-        break;
-      case 'Senior':
-        baseSalary = 130000;
-        break;
-      default:
-        baseSalary = 90000;
-    }
-    
-    // Adjust based on number of skills
-    const skillBonus = skillCount * 5000;
-    const totalSalary = baseSalary + skillBonus;
-    
-    // Create range
-    const minSalary = Math.round(totalSalary * 0.9 / 1000) * 1000;
-    const maxSalary = Math.round(totalSalary * 1.1 / 1000) * 1000;
-    
-    return `$${minSalary.toLocaleString()} - $${maxSalary.toLocaleString()}`;
-  };
-
   const generateLearningPath = async () => {
     if (!analysisResult) return;
     
@@ -183,11 +66,7 @@ const JobPreparation = () => {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Get the actual skills from the job analysis
-      const jobSkills = analysisResult.requiredSkills.map(skill => skill.name);
-      console.log('Job skills for learning path:', jobSkills);
-      
-      // Customize learning path based on available time and actual job skills
+      // Customize learning path based on available time
       let phases = [];
       let estimatedDuration = '';
       
@@ -195,17 +74,17 @@ const JobPreparation = () => {
         phases = [
           {
             name: 'Intensive Foundation (Weeks 1-2)',
-            skills: jobSkills.slice(0, 2).map(skill => `${skill} Basics`),
+            skills: ['Python Basics', 'React Fundamentals'],
             resources: ['CodeMentor AI Tutoring', 'Fast-track courses', 'Documentation'],
-            milestones: jobSkills.slice(0, 2).map(skill => `Complete ${skill} basics`),
-            platformLearning: jobSkills.slice(0, 2).map(skill => `2 tutoring sessions on ${skill}`)
+            milestones: ['Complete Python basics', 'Build simple React app'],
+            platformLearning: ['2 tutoring sessions on Python', '1 tutoring session on React']
           },
           {
             name: 'Core Skills (Weeks 3-4)',
-            skills: jobSkills.slice(2, 4).map(skill => `${skill} Fundamentals`),
+            skills: ['API Design', 'Basic System Design'],
             resources: ['CodeMentor AI Tutoring', 'Practice projects', 'Documentation'],
-            milestones: jobSkills.slice(2, 4).map(skill => `Master ${skill} fundamentals`),
-            platformLearning: jobSkills.slice(2, 4).map(skill => `2 tutoring sessions on ${skill}`)
+            milestones: ['Build simple API', 'Design basic system'],
+            platformLearning: ['2 tutoring sessions on API design', '1 tutoring session on system design']
           }
         ];
         estimatedDuration = '2-4 weeks';
@@ -213,24 +92,24 @@ const JobPreparation = () => {
         phases = [
           {
             name: 'Foundation (Weeks 1-3)',
-            skills: jobSkills.slice(0, 3).map(skill => `${skill} Basics`),
+            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
             resources: ['CodeMentor AI Tutoring', 'Online courses', 'Documentation'],
-            milestones: jobSkills.slice(0, 3).map(skill => `Complete ${skill} course`),
-            platformLearning: jobSkills.slice(0, 3).map(skill => `2 tutoring sessions on ${skill}`)
+            milestones: ['Complete Python course', 'Build React app', 'Design database'],
+            platformLearning: ['3 tutoring sessions on Python', '2 tutoring sessions on React', '1 tutoring session on databases']
           },
           {
             name: 'Intermediate (Weeks 4-6)',
-            skills: jobSkills.slice(3, 5).map(skill => `${skill} Intermediate`),
+            skills: ['Advanced Python', 'State Management', 'API Design'],
             resources: ['CodeMentor AI Tutoring', 'Practice projects', 'Code reviews'],
-            milestones: jobSkills.slice(3, 5).map(skill => `Build ${skill} project`),
-            platformLearning: jobSkills.slice(3, 5).map(skill => `2 tutoring sessions on ${skill}`)
+            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
+            platformLearning: ['2 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '1 tutoring session on API design']
           },
           {
             name: 'Advanced (Weeks 7-8)',
-            skills: jobSkills.slice(5).map(skill => `${skill} Advanced`),
-            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects'],
-            milestones: jobSkills.slice(5).map(skill => `Master ${skill} advanced concepts`),
-            platformLearning: jobSkills.slice(5).map(skill => `2 tutoring sessions on ${skill}`)
+            skills: ['System Design', 'Performance Optimization'],
+            resources: ['CodeMentor AI Tutoring', 'System design books', 'Performance testing'],
+            milestones: ['Design scalable architecture', 'Optimize performance'],
+            platformLearning: ['2 tutoring sessions on system design', '1 tutoring session on performance optimization']
           }
         ];
         estimatedDuration = '4-8 weeks';
@@ -238,24 +117,24 @@ const JobPreparation = () => {
         phases = [
           {
             name: 'Foundation (Weeks 1-4)',
-            skills: jobSkills.slice(0, 3).map(skill => `${skill} Basics`),
+            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
             resources: ['CodeMentor AI Tutoring', 'Online courses', 'Practice projects', 'Documentation'],
-            milestones: jobSkills.slice(0, 3).map(skill => `Complete ${skill} course`),
-            platformLearning: jobSkills.slice(0, 3).map(skill => `3 tutoring sessions on ${skill}`)
+            milestones: ['Complete Python course', 'Build simple React app', 'Design database schema'],
+            platformLearning: ['4 tutoring sessions on Python', '3 tutoring sessions on React', '2 tutoring sessions on databases']
           },
           {
             name: 'Intermediate (Weeks 5-8)',
-            skills: jobSkills.slice(3, 5).map(skill => `${skill} Intermediate`),
+            skills: ['Advanced Python', 'State Management', 'API Design'],
             resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Code reviews'],
-            milestones: jobSkills.slice(3, 5).map(skill => `Build ${skill} project`),
-            platformLearning: jobSkills.slice(3, 5).map(skill => `3 tutoring sessions on ${skill}`)
+            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
+            platformLearning: ['3 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '2 tutoring sessions on API design']
           },
           {
             name: 'Advanced (Weeks 9-12)',
-            skills: jobSkills.slice(5).map(skill => `${skill} Advanced`),
-            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Mentoring'],
-            milestones: jobSkills.slice(5).map(skill => `Master ${skill} advanced concepts`),
-            platformLearning: jobSkills.slice(5).map(skill => `3 tutoring sessions on ${skill}`)
+            skills: ['System Design', 'Cloud Services', 'Performance Optimization'],
+            resources: ['CodeMentor AI Tutoring', 'System design books', 'AWS labs', 'Performance testing'],
+            milestones: ['Design scalable architecture', 'Deploy to AWS', 'Optimize performance'],
+            platformLearning: ['3 tutoring sessions on system design', '2 tutoring sessions on cloud services', '1 tutoring session on performance']
           }
         ];
         estimatedDuration = '8-12 weeks';
@@ -263,32 +142,32 @@ const JobPreparation = () => {
         // Default 12-16 weeks
         phases = [
           {
-            name: 'Foundation (Weeks 1-6)',
-            skills: jobSkills.slice(0, 4).map(skill => `${skill} Basics`),
+            name: 'Foundation (Weeks 1-4)',
+            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
             resources: ['CodeMentor AI Tutoring', 'Online courses', 'Practice projects', 'Documentation'],
-            milestones: jobSkills.slice(0, 4).map(skill => `Complete ${skill} course`),
-            platformLearning: jobSkills.slice(0, 4).map(skill => `3 tutoring sessions on ${skill}`)
+            milestones: ['Complete Python course', 'Build simple React app', 'Design database schema'],
+            platformLearning: ['4 tutoring sessions on Python', '3 tutoring sessions on React', '2 tutoring sessions on databases']
           },
           {
-            name: 'Intermediate (Weeks 7-10)',
-            skills: jobSkills.slice(4, 6).map(skill => `${skill} Intermediate`),
+            name: 'Intermediate (Weeks 5-8)',
+            skills: ['Advanced Python', 'State Management', 'API Design'],
             resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Code reviews'],
-            milestones: jobSkills.slice(4, 6).map(skill => `Build ${skill} project`),
-            platformLearning: jobSkills.slice(4, 6).map(skill => `3 tutoring sessions on ${skill}`)
+            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
+            platformLearning: ['3 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '2 tutoring sessions on API design']
           },
           {
-            name: 'Advanced (Weeks 11-14)',
-            skills: jobSkills.slice(6, 8).map(skill => `${skill} Advanced`),
-            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Mentoring'],
-            milestones: jobSkills.slice(6, 8).map(skill => `Master ${skill} advanced concepts`),
-            platformLearning: jobSkills.slice(6, 8).map(skill => `3 tutoring sessions on ${skill}`)
+            name: 'Advanced (Weeks 9-12)',
+            skills: ['System Design', 'Cloud Services', 'Performance Optimization'],
+            resources: ['CodeMentor AI Tutoring', 'System design books', 'AWS labs', 'Performance testing'],
+            milestones: ['Design scalable architecture', 'Deploy to AWS', 'Optimize performance'],
+            platformLearning: ['3 tutoring sessions on system design', '2 tutoring sessions on cloud services', '1 tutoring session on performance']
           },
           {
-            name: 'Expertise (Weeks 15-16)',
-            skills: jobSkills.slice(8).map(skill => `${skill} Mastery`),
-            resources: ['CodeMentor AI Tutoring', 'Expert tutorials', 'Real projects', 'Leadership'],
-            milestones: jobSkills.slice(8).map(skill => `Achieve ${skill} mastery`),
-            platformLearning: jobSkills.slice(8).map(skill => `2 tutoring sessions on ${skill}`)
+            name: 'Expertise (Weeks 13-16)',
+            skills: ['Leadership', 'Architecture Patterns', 'Best Practices'],
+            resources: ['CodeMentor AI Tutoring', 'Leadership books', 'Code reviews', 'Mentoring'],
+            milestones: ['Lead technical discussions', 'Implement patterns', 'Mentor others'],
+            platformLearning: ['2 tutoring sessions on leadership', '2 tutoring sessions on architecture', '1 tutoring session on mentoring']
           }
         ];
         estimatedDuration = '12-16 weeks';
@@ -309,62 +188,38 @@ const JobPreparation = () => {
   };
 
   const saveLearningPath = async () => {
-    if (!learningPath || !analysisResult) return;
+    if (!learningPath || !analysisResult) {
+      alert('Please generate a learning path first');
+      return;
+    }
     
     setIsSaving(true);
     
     try {
-      // Create a comprehensive learning path object
-      const pathToSave = {
-        id: Date.now(),
-        jobTitle: jobTitle,
-        company: company || 'Unknown Company',
-        dateCreated: new Date().toISOString(),
-        preparationTime: preparationTime,
-        analysisResult: analysisResult,
-        learningPath: learningPath,
-        progress: {
-          overallProgress: 0,
-          skills: analysisResult.requiredSkills.map(skill => ({
-            name: skill.name,
-            requiredLevel: skill.level,
-            currentLevel: 0, // Will be updated based on tutoring sessions
-            progress: 0,
-            status: 'not-started', // not-started, in-progress, completed
-            tutoringSessions: 0,
-            lastUpdated: new Date().toISOString()
-          }))
-        }
-      };
-      
-      // Save to localStorage
-      const existingPaths = JSON.parse(localStorage.getItem('savedLearningPaths') || '[]');
-      existingPaths.push(pathToSave);
-      localStorage.setItem('savedLearningPaths', JSON.stringify(existingPaths));
-      
-      // Update state
-      setSavedLearningPaths(existingPaths);
-      
-      // Also save to a general progress tracking
-      const userProgress = JSON.parse(localStorage.getItem('userSkillProgress') || '{}');
-      
-      analysisResult.requiredSkills.forEach(skill => {
-        if (!userProgress[skill.name]) {
-          userProgress[skill.name] = {
-            currentLevel: 0,
-            totalSessions: 0,
-            lastSession: null,
-            masteryLevel: 0, // 0-100%
-            jobsApplied: []
-          };
-        }
-        // Add this job to the skill's job list
-        if (!userProgress[skill.name].jobsApplied.includes(jobTitle)) {
-          userProgress[skill.name].jobsApplied.push(jobTitle);
-        }
+      // Call backend to save learning path
+      const response = await fetch('/api/job-prep/save-path', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jobTitle,
+          company,
+          preparationTime,
+          analysisResult,
+          learningPath
+        }),
       });
       
-      localStorage.setItem('userSkillProgress', JSON.stringify(userProgress));
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Update local state
+      const existingPaths = [...savedLearningPaths, data.path];
+      setSavedLearningPaths(existingPaths);
       
       alert('Learning path saved successfully! Your progress will now be tracked.');
     } catch (error) {
@@ -373,6 +228,122 @@ const JobPreparation = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Intelligent job description analysis
+  const analyzeJobDescription = (description) => {
+    const lowerDesc = description.toLowerCase();
+    const skills = [];
+    
+    // Frontend skills
+    if (lowerDesc.includes('react') || lowerDesc.includes('frontend') || lowerDesc.includes('ui') || lowerDesc.includes('user interface')) {
+      skills.push({ name: 'React', level: 7, importance: 'high' });
+    }
+    if (lowerDesc.includes('javascript') || lowerDesc.includes('js') || lowerDesc.includes('es6')) {
+      skills.push({ name: 'JavaScript', level: 8, importance: 'high' });
+    }
+    if (lowerDesc.includes('vue') || lowerDesc.includes('vue.js')) {
+      skills.push({ name: 'Vue.js', level: 7, importance: 'high' });
+    }
+    if (lowerDesc.includes('html') || lowerDesc.includes('css')) {
+      skills.push({ name: 'HTML/CSS', level: 6, importance: 'medium' });
+    }
+    
+    // Backend skills
+    if (lowerDesc.includes('python') || lowerDesc.includes('django') || lowerDesc.includes('flask')) {
+      skills.push({ name: 'Python', level: 8, importance: 'high' });
+    }
+    if (lowerDesc.includes('node.js') || lowerDesc.includes('express') || lowerDesc.includes('backend')) {
+      skills.push({ name: 'Node.js', level: 7, importance: 'high' });
+    }
+    if (lowerDesc.includes('java') || lowerDesc.includes('spring')) {
+      skills.push({ name: 'Java', level: 8, importance: 'high' });
+    }
+    
+    // Database skills
+    if (lowerDesc.includes('sql') || lowerDesc.includes('database') || lowerDesc.includes('mysql') || lowerDesc.includes('postgresql')) {
+      skills.push({ name: 'SQL', level: 6, importance: 'medium' });
+    }
+    if (lowerDesc.includes('mongodb') || lowerDesc.includes('nosql')) {
+      skills.push({ name: 'MongoDB', level: 6, importance: 'medium' });
+    }
+    
+    // Cloud & DevOps
+    if (lowerDesc.includes('aws') || lowerDesc.includes('amazon web services')) {
+      skills.push({ name: 'AWS', level: 6, importance: 'medium' });
+    }
+    if (lowerDesc.includes('docker') || lowerDesc.includes('kubernetes')) {
+      skills.push({ name: 'Docker', level: 5, importance: 'medium' });
+    }
+    
+    // System Design
+    if (lowerDesc.includes('system design') || lowerDesc.includes('architecture') || lowerDesc.includes('scalable')) {
+      skills.push({ name: 'System Design', level: 7, importance: 'high' });
+    }
+    
+    // Testing
+    if (lowerDesc.includes('testing') || lowerDesc.includes('test') || lowerDesc.includes('qa')) {
+      skills.push({ name: 'Testing', level: 6, importance: 'medium' });
+    }
+    
+    // If no specific skills found, add some common ones based on job level
+    if (skills.length === 0) {
+      if (lowerDesc.includes('junior') || lowerDesc.includes('entry')) {
+        skills.push(
+          { name: 'JavaScript', level: 6, importance: 'high' },
+          { name: 'HTML/CSS', level: 5, importance: 'medium' },
+          { name: 'React', level: 5, importance: 'high' }
+        );
+      } else if (lowerDesc.includes('senior') || lowerDesc.includes('lead')) {
+        skills.push(
+          { name: 'System Design', level: 8, importance: 'high' },
+          { name: 'Architecture', level: 8, importance: 'high' },
+          { name: 'Leadership', level: 7, importance: 'high' }
+        );
+      }
+    }
+    
+    return skills;
+  };
+
+  const determineExperienceLevel = (description) => {
+    const lowerDesc = description.toLowerCase();
+    
+    if (lowerDesc.includes('junior') || lowerDesc.includes('entry') || lowerDesc.includes('0-2') || lowerDesc.includes('1-3')) {
+      return 'Junior';
+    } else if (lowerDesc.includes('senior') || lowerDesc.includes('lead') || lowerDesc.includes('5+') || lowerDesc.includes('7+')) {
+      return 'Senior';
+    } else if (lowerDesc.includes('mid') || lowerDesc.includes('intermediate') || lowerDesc.includes('3-5')) {
+      return 'Mid-Level';
+    } else {
+      return 'Mid-Level'; // Default
+    }
+  };
+
+  const estimateSalary = (description, skills) => {
+    const level = determineExperienceLevel(description);
+    const skillCount = skills.length;
+    
+    let baseSalary = 0;
+    switch (level) {
+      case 'Junior':
+        baseSalary = 60000;
+        break;
+      case 'Mid-Level':
+        baseSalary = 90000;
+        break;
+      case 'Senior':
+        baseSalary = 130000;
+        break;
+      default:
+        baseSalary = 90000;
+    }
+    
+    // Adjust based on skill requirements
+    const skillBonus = skillCount * 5000;
+    const totalSalary = baseSalary + skillBonus;
+    
+    return `$${Math.round(totalSalary / 1000)}k - $${Math.round((totalSalary + 20000) / 1000)}k`;
   };
 
   const getProjectSuggestions = (skillName) => {
@@ -470,32 +441,22 @@ const JobPreparation = () => {
     localStorage.setItem('jobPreparationData', JSON.stringify(jobData));
   }, [jobTitle, company, jobDescription, preparationTime, analysisResult, learningPath]);
 
-  // Load data from localStorage on component mount
+  // Load data from backend on component mount
   useEffect(() => {
-    const savedJobData = localStorage.getItem('jobPreparationData');
-    if (savedJobData) {
+    const loadSavedData = async () => {
       try {
-        const data = JSON.parse(savedJobData);
-        if (data.jobTitle) setJobTitle(data.jobTitle);
-        if (data.company) setCompany(data.company);
-        if (data.jobDescription) setJobDescription(data.jobDescription);
-        if (data.preparationTime) setPreparationTime(data.preparationTime);
-        if (data.analysisResult) setAnalysisResult(data.analysisResult);
-        if (data.learningPath) setLearningPath(data.learningPath);
-      } catch (error) {
-        console.error('Error loading saved job data:', error);
-      }
-    }
-    
-    // Load saved learning paths
-    const savedPaths = localStorage.getItem('savedLearningPaths');
-    if (savedPaths) {
-      try {
-        setSavedLearningPaths(JSON.parse(savedPaths));
+        // Load saved learning paths from backend
+        const response = await fetch('/api/job-prep/paths');
+        if (response.ok) {
+          const data = await response.json();
+          setSavedLearningPaths(data.learningPaths || []);
+        }
       } catch (error) {
         console.error('Error loading saved learning paths:', error);
       }
-    }
+    };
+    
+    loadSavedData();
   }, []);
 
   return (
