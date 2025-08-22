@@ -239,6 +239,48 @@ const Dashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+        .custom-scrollbar {
+          position: relative;
+        }
+        .custom-scrollbar::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 20px;
+          background: linear-gradient(transparent, white);
+          pointer-events: none;
+          border-radius: 0 0 8px 8px;
+        }
+        .custom-scrollbar::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 20px;
+          background: linear-gradient(white, transparent);
+          pointer-events: none;
+          border-radius: 8px 8px 0 0;
+          z-index: 1;
+        }
+      `}</style>
       {/* Welcome Section */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-secondary-900 mb-2">
@@ -283,15 +325,22 @@ const Dashboard = () => {
           <div className="card">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-secondary-900">Your Progress</h2>
-              <Link to="/profile" className="text-primary-600 hover:text-primary-700 text-sm font-medium">
-                View Details
-              </Link>
+              <div className="flex items-center space-x-3">
+                {dashboardSkills.length > 6 && (
+                  <span className="text-xs text-secondary-500 bg-secondary-100 px-2 py-1 rounded-full">
+                    {dashboardSkills.length} skills
+                  </span>
+                )}
+                <Link to="/profile" className="text-primary-600 hover:text-primary-700 text-sm font-medium">
+                  View Details
+                </Link>
+              </div>
             </div>
             <p className="text-sm text-secondary-600 mb-4">
               Track your learning journey across different CS concepts
             </p>
             
-            <div className="space-y-6">
+            <div className="max-h-72 sm:max-h-80 lg:max-h-96 overflow-y-auto pr-2 space-y-6 custom-scrollbar border border-secondary-100 rounded-lg p-4 relative">
               {dashboardSkills.length > 0 ? (
                 dashboardSkills.map((skill) => (
                   <div key={skill.name} className="space-y-2">
@@ -345,6 +394,18 @@ const Dashboard = () => {
                       </div>
                       <div className="text-secondary-500">0 tutoring sessions • 0% mastery</div>
                     </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Scroll indicator */}
+              {dashboardSkills.length > 6 && (
+                <div className="text-center pt-2 border-t border-secondary-100">
+                  <div className="text-xs text-secondary-400 flex items-center justify-center">
+                    <span className="mr-1">Scroll to see more skills</span>
+                    <svg className="w-3 h-3 animate-bounce" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
                   </div>
                 </div>
               )}
