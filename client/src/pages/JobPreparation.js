@@ -65,127 +65,37 @@ const JobPreparation = () => {
       alert('Please analyze a job first');
       return;
     }
-
+  
     setIsGenerating(true);
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Call AI-powered learning path generation endpoint
+      const response = await fetch('/api/job-prep/generate-path', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jobAnalysis: analysisResult,
+          preparationTime,
+          userCurrentSkills: {} // TODO: Get from user profile if needed
+        }),
+      });
       
-      // Customize learning path based on available time
-      let phases = [];
-      let estimatedDuration = '';
-      
-      if (preparationTime === '2-4') {
-        phases = [
-          {
-            name: 'Intensive Foundation (Weeks 1-2)',
-            skills: ['Python Basics', 'React Fundamentals'],
-            resources: ['CodeMentor AI Tutoring', 'Fast-track courses', 'Documentation'],
-            milestones: ['Complete Python basics', 'Build simple React app'],
-            platformLearning: ['2 tutoring sessions on Python', '1 tutoring session on React']
-          },
-          {
-            name: 'Core Skills (Weeks 3-4)',
-            skills: ['API Design', 'Basic System Design'],
-            resources: ['CodeMentor AI Tutoring', 'Practice projects', 'Documentation'],
-            milestones: ['Build simple API', 'Design basic system'],
-            platformLearning: ['2 tutoring sessions on API design', '1 tutoring session on system design']
-          }
-        ];
-        estimatedDuration = '2-4 weeks';
-      } else if (preparationTime === '4-8') {
-        phases = [
-          {
-            name: 'Foundation (Weeks 1-3)',
-            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
-            resources: ['CodeMentor AI Tutoring', 'Online courses', 'Documentation'],
-            milestones: ['Complete Python course', 'Build React app', 'Design database'],
-            platformLearning: ['3 tutoring sessions on Python', '2 tutoring sessions on React', '1 tutoring session on databases']
-          },
-          {
-            name: 'Intermediate (Weeks 4-6)',
-            skills: ['Advanced Python', 'State Management', 'API Design'],
-            resources: ['CodeMentor AI Tutoring', 'Practice projects', 'Code reviews'],
-            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
-            platformLearning: ['2 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '1 tutoring session on API design']
-          },
-          {
-            name: 'Advanced (Weeks 7-8)',
-            skills: ['System Design', 'Performance Optimization'],
-            resources: ['CodeMentor AI Tutoring', 'System design books', 'Performance testing'],
-            milestones: ['Design scalable architecture', 'Optimize performance'],
-            platformLearning: ['2 tutoring sessions on system design', '1 tutoring session on performance optimization']
-          }
-        ];
-        estimatedDuration = '4-8 weeks';
-      } else if (preparationTime === '8-12') {
-        phases = [
-          {
-            name: 'Foundation (Weeks 1-4)',
-            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
-            resources: ['CodeMentor AI Tutoring', 'Online courses', 'Practice projects', 'Documentation'],
-            milestones: ['Complete Python course', 'Build simple React app', 'Design database schema'],
-            platformLearning: ['4 tutoring sessions on Python', '3 tutoring sessions on React', '2 tutoring sessions on databases']
-          },
-          {
-            name: 'Intermediate (Weeks 5-8)',
-            skills: ['Advanced Python', 'State Management', 'API Design'],
-            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Code reviews'],
-            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
-            platformLearning: ['3 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '2 tutoring sessions on API design']
-          },
-          {
-            name: 'Advanced (Weeks 9-12)',
-            skills: ['System Design', 'Cloud Services', 'Performance Optimization'],
-            resources: ['CodeMentor AI Tutoring', 'System design books', 'AWS labs', 'Performance testing'],
-            milestones: ['Design scalable architecture', 'Deploy to AWS', 'Optimize performance'],
-            platformLearning: ['3 tutoring sessions on system design', '2 tutoring sessions on cloud services', '1 tutoring session on performance']
-          }
-        ];
-        estimatedDuration = '8-12 weeks';
-      } else {
-        // Default 12-16 weeks
-        phases = [
-          {
-            name: 'Foundation (Weeks 1-4)',
-            skills: ['Python Basics', 'React Fundamentals', 'Database Design'],
-            resources: ['CodeMentor AI Tutoring', 'Online courses', 'Practice projects', 'Documentation'],
-            milestones: ['Complete Python course', 'Build simple React app', 'Design database schema'],
-            platformLearning: ['4 tutoring sessions on Python', '3 tutoring sessions on React', '2 tutoring sessions on databases']
-          },
-          {
-            name: 'Intermediate (Weeks 5-8)',
-            skills: ['Advanced Python', 'State Management', 'API Design'],
-            resources: ['CodeMentor AI Tutoring', 'Advanced tutorials', 'Real projects', 'Code reviews'],
-            milestones: ['Build API with FastAPI', 'Implement Redux', 'Create RESTful services'],
-            platformLearning: ['3 tutoring sessions on advanced Python', '2 tutoring sessions on state management', '2 tutoring sessions on API design']
-          },
-          {
-            name: 'Advanced (Weeks 9-12)',
-            skills: ['System Design', 'Cloud Services', 'Performance Optimization'],
-            resources: ['CodeMentor AI Tutoring', 'System design books', 'AWS labs', 'Performance testing'],
-            milestones: ['Design scalable architecture', 'Deploy to AWS', 'Optimize performance'],
-            platformLearning: ['3 tutoring sessions on system design', '2 tutoring sessions on cloud services', '1 tutoring session on performance']
-          },
-          {
-            name: 'Expertise (Weeks 13-16)',
-            skills: ['Leadership', 'Architecture Patterns', 'Best Practices'],
-            resources: ['CodeMentor AI Tutoring', 'Leadership books', 'Code reviews', 'Mentoring'],
-            milestones: ['Lead technical discussions', 'Implement patterns', 'Mentor others'],
-            platformLearning: ['2 tutoring sessions on leadership', '2 tutoring sessions on architecture', '1 tutoring session on mentoring']
-          }
-        ];
-        estimatedDuration = '12-16 weeks';
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      const path = {
-        title: `Learning Path for ${jobTitle}`,
-        estimatedDuration: estimatedDuration,
-        phases: phases
-      };
+      const data = await response.json();
       
-      setLearningPath(path);
+      if (data.success && data.learningPath) {
+        // AI learning path successful
+        setLearningPath(data.learningPath);
+      } else {
+        // Fallback learning path
+        setLearningPath(data.learningPath);
+      }
+      
       setActiveTab('learning');
     } catch (error) {
       console.error('Error generating learning path:', error);
