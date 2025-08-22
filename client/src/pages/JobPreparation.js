@@ -10,6 +10,7 @@ const JobPreparation = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [learningPath, setLearningPath] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [savedLearningPaths, setSavedLearningPaths] = useState([]);
 
@@ -60,7 +61,12 @@ const JobPreparation = () => {
   };
 
   const generateLearningPath = async () => {
-    if (!analysisResult) return;
+    if (!analysisResult) {
+      alert('Please analyze a job first');
+      return;
+    }
+
+    setIsGenerating(true);
     
     try {
       // Simulate API call
@@ -184,6 +190,8 @@ const JobPreparation = () => {
     } catch (error) {
       console.error('Error generating learning path:', error);
       alert('Failed to generate learning path. Please try again.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 

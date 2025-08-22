@@ -501,6 +501,74 @@ app.get('/api/skills', (req, res) => {
   res.json({ skills: user.skillLevels });
 });
 
+// Get dashboard skills endpoint
+app.get('/api/dashboard/skills', (req, res) => {
+  try {
+    if (!currentUserEmail) {
+      return res.json({ skills: {} });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.json({ skills: {} });
+    }
+    
+    // Get skills from user's learning paths and skill progress
+    const skills = {};
+    
+    // Add skills from learning paths
+    if (user.learningPaths) {
+      user.learningPaths.forEach(path => {
+        if (path.progress && path.progress.skills) {
+          path.progress.skills.forEach(skill => {
+            if (!skills[skill.name]) {
+              skills[skill.name] = {
+                level: skill.currentLevel || 0,
+                totalSessions: skill.tutoringSessions || 0,
+                jobsApplied: [path.jobTitle]
+              };
+            } else {
+              // Add job title if not already present
+              if (!skills[skill.name].jobsApplied.includes(path.jobTitle)) {
+                skills[skill.name].jobsApplied.push(path.jobTitle);
+              }
+            }
+          });
+        }
+      });
+    }
+    
+    // Add skills from skill progress
+    if (user.skillProgress) {
+      Object.entries(user.skillProgress).forEach(([skillName, skillData]) => {
+        if (!skills[skillName]) {
+          skills[skillName] = {
+            level: skillData.currentLevel || 0,
+            totalSessions: skillData.totalSessions || 0,
+            jobsApplied: skillData.jobsApplied || []
+          };
+        } else {
+          // Merge data
+          skills[skillName].level = Math.max(skills[skillName].level, skillData.currentLevel || 0);
+          skills[skillName].totalSessions = Math.max(skills[skillName].totalSessions, skillData.totalSessions || 0);
+          // Merge jobs applied
+          skillData.jobsApplied?.forEach(job => {
+            if (!skills[skillName].jobsApplied.includes(job)) {
+              skills[skillName].jobsApplied.push(job);
+            }
+          });
+        }
+      });
+    }
+    
+    console.log('Dashboard skills response:', skills);
+    res.json({ skills });
+  } catch (error) {
+    console.error('Error fetching dashboard skills:', error);
+    res.status(500).json({ skills: {}, error: error.message });
+  }
+});
+
 // Get tutoring session history
 app.get('/api/tutoring/sessions', (req, res) => {
   if (!currentUserEmail) {

@@ -12,7 +12,7 @@ import {
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getOverallProgress, getSkillsForDashboard } from '../utils/skillProgressTracker';
+// Removed localStorage imports - now using backend API
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -58,20 +58,39 @@ const Dashboard = () => {
           setRecentSessions(sessionsData.sessions.slice(0, 3)); // Show last 3 sessions
         }
         
-        // Load skill progress data from localStorage
-        const skills = getSkillsForDashboard();
-        console.log('Dashboard skills loaded:', skills);
-        console.log('Saved learning paths:', localStorage.getItem('savedLearningPaths'));
-        console.log('User skill progress:', localStorage.getItem('userSkillProgress'));
-        setDashboardSkills(skills);
-        
-        // Update stats with skill progress
-        const overallProgress = getOverallProgress();
-        console.log('Overall progress calculated:', overallProgress);
-        setStats(prev => ({
-          ...prev,
-          overallProgress: overallProgress
-        }));
+        // Load skill progress data from backend
+        try {
+          const skillsResponse = await fetch('/api/dashboard/skills');
+          if (skillsResponse.ok) {
+            const skillsData = await skillsResponse.json();
+            console.log('Dashboard skills from backend:', skillsData);
+            
+            // Convert backend skills format to dashboard format
+            const skillsArray = Object.entries(skillsData.skills || {}).map(([name, data]) => ({
+              name,
+              currentLevel: data.level || 0,
+              masteryLevel: (data.level || 0) * 10,
+              totalSessions: data.totalSessions || 0,
+              jobsApplied: data.jobsApplied || []
+            }));
+            
+            setDashboardSkills(skillsArray);
+            
+            // Calculate overall progress
+            const totalSkills = skillsArray.length;
+            const totalProgress = skillsArray.reduce((sum, skill) => sum + skill.masteryLevel, 0);
+            const overallProgress = totalSkills > 0 ? Math.round(totalProgress / totalSkills) : 0;
+            
+            console.log('Overall progress calculated:', overallProgress);
+            setStats(prev => ({
+              ...prev,
+              overallProgress: overallProgress
+            }));
+          }
+        } catch (error) {
+          console.error('Error loading skills from backend:', error);
+          setDashboardSkills([]);
+        }
         
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -110,17 +129,7 @@ const Dashboard = () => {
     fetchDashboardData();
   }, []);
 
-  const getSkillProgress = (skill) => {
-    const skillLevels = user?.skillLevels || {};
-    const skillData = skillLevels[skill] || { level: 0 };
-    return Math.min(skillData.level * 10, 100); // Convert 1-10 scale to percentage
-  };
-
-  const getSkillLevel = (skill) => {
-    const skillLevels = user?.skillLevels || {};
-    const skillData = skillLevels[skill] || { level: 0 };
-    return skillData.level;
-  };
+  // Removed old localStorage functions - now using backend data
 
   const getSkillDisplayName = (skill) => {
     // Convert skill names to display format
@@ -478,11 +487,11 @@ const Dashboard = () => {
                       {(() => {
                         const skillName = extractSkillFromTopic(session.topic);
                         if (skillName) {
-                          const skillProgress = getSkillProgress(skillName);
-                          if (skillProgress) {
+                          const skillData = dashboardSkills.find(s => s.name === skillName);
+                          if (skillData) {
                             return (
                               <div className="text-xs text-primary-600">
-                                Skill Progress: {skillProgress.masteryLevel}% (Level {skillProgress.currentLevel}/10)
+                                Skill Progress: {skillData.masteryLevel}% (Level {skillData.currentLevel}/10)
                               </div>
                             );
                           }
@@ -523,7 +532,7 @@ const Dashboard = () => {
             <TrendingUp className="h-6 w-6 text-accent-600" />
           </div>
           <h3 className="text-2xl font-bold text-secondary-900 mb-1">
-            {dashboardSkills.length > 0 ? getOverallProgress() : 0}%
+            {stats.overallProgress || 0}%
           </h3>
           <p className="text-sm text-secondary-600">Overall Progress</p>
         </div>
