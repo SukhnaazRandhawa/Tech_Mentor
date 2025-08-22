@@ -1,4 +1,4 @@
-import { BookOpen, Clock, FileText, Rocket, Search, Target } from 'lucide-react';
+import { BookOpen, CheckCircle, Clock, FileText, MessageSquare, Rocket, Search, Target } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 const JobPreparation = () => {
@@ -832,15 +832,18 @@ const JobPreparation = () => {
             </h2>
             
             {savedLearningPaths.length > 0 ? (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 {savedLearningPaths.map((path) => (
                   <div key={path.id} className="border border-secondary-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between mb-4">
+                    {/* Header with job info and progress */}
+                    <div className="flex items-start justify-between mb-6">
                       <div>
-                        <h3 className="text-xl font-semibold text-secondary-900">
-                          {path.jobTitle}
+                        <h3 className="text-2xl font-bold text-secondary-900 mb-2">
+                          Learning Path for {path.jobTitle}
                         </h3>
-                        <p className="text-secondary-600">{path.company}</p>
+                        {path.company && (
+                          <p className="text-lg text-secondary-600 mb-2">{path.company}</p>
+                        )}
                         <p className="text-sm text-secondary-500">
                           Created: {new Date(path.dateCreated).toLocaleDateString()}
                         </p>
@@ -853,44 +856,88 @@ const JobPreparation = () => {
                         <div className="text-sm text-secondary-600">Overall Progress</div>
                       </div>
                     </div>
-                    
-                    <div className="mb-4">
-                      <h4 className="font-medium text-secondary-900 mb-2">Skills Progress</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {path.progress.skills.map((skill, index) => (
-                          <div key={index} className="bg-secondary-50 p-3 rounded-lg">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-medium text-secondary-900">{skill.name}</span>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                skill.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                skill.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
-                                {skill.status === 'completed' ? 'Completed' :
-                                 skill.status === 'in-progress' ? 'In Progress' : 'Not Started'}
-                              </span>
-                            </div>
+
+                    {/* Display the actual learning path structure */}
+                    {path.learningPath && path.learningPath.phases && (
+                      <div className="space-y-6">
+                        {path.learningPath.phases.map((phase, phaseIndex) => (
+                          <div key={phaseIndex} className="bg-white border border-secondary-200 rounded-lg p-6">
+                            <h4 className="text-lg font-semibold text-secondary-900 mb-4">
+                              Phase {phaseIndex + 1}: {phase.title}
+                            </h4>
                             
-                            <div className="text-sm text-secondary-600 mb-2">
-                              Level: {skill.currentLevel}/{skill.requiredLevel}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              {/* Skills to Learn */}
+                              <div>
+                                <h5 className="font-medium text-secondary-800 mb-2 flex items-center">
+                                  <Target className="h-4 w-4 mr-2 text-primary-600" />
+                                  Skills to Learn
+                                </h5>
+                                <ul className="space-y-1">
+                                  {phase.skills.map((skill, skillIndex) => (
+                                    <li key={skillIndex} className="text-sm text-secondary-700 flex items-center">
+                                      <span className="w-2 h-2 bg-primary-500 rounded-full mr-2"></span>
+                                      {skill}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+
+                              {/* Resources */}
+                              <div>
+                                <h5 className="font-medium text-secondary-800 mb-2 flex items-center">
+                                  <BookOpen className="h-4 w-4 mr-2 text-primary-600" />
+                                  Resources
+                                </h5>
+                                <ul className="space-y-1">
+                                  {phase.resources.map((resource, resourceIndex) => (
+                                    <li key={resourceIndex} className="text-sm text-secondary-700 flex items-center">
+                                      <span className="w-2 h-2 bg-accent-500 rounded-full mr-2"></span>
+                                      {resource}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
                             </div>
-                            
-                            <div className="w-full bg-secondary-200 rounded-full h-2">
-                              <div 
-                                className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                                style={{ width: `${skill.progress}%` }}
-                              ></div>
+
+                            {/* Milestones */}
+                            <div className="mt-4">
+                              <h5 className="font-medium text-secondary-800 mb-2 flex items-center">
+                                <CheckCircle className="h-4 w-4 mr-2 text-primary-600" />
+                                Milestones
+                              </h5>
+                              <ul className="space-y-1">
+                                {phase.milestones.map((milestone, milestoneIndex) => (
+                                  <li key={milestoneIndex} className="text-sm text-secondary-700 flex items-center">
+                                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                    {milestone}
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
-                            
-                            <div className="text-xs text-secondary-500 mt-1">
-                              {skill.tutoringSessions} tutoring sessions
+
+                            {/* Platform Learning */}
+                            <div className="mt-4">
+                              <h5 className="font-medium text-secondary-800 mb-2 flex items-center">
+                                <MessageSquare className="h-4 w-4 mr-2 text-primary-600" />
+                                Platform Learning
+                              </h5>
+                              <ul className="space-y-1">
+                                {phase.platformLearning.map((platform, platformIndex) => (
+                                  <li key={platformIndex} className="text-sm text-secondary-700 flex items-center">
+                                    <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                                    {platform}
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                    
-                    <div className="flex space-x-2">
+                    )}
+
+                    {/* Action buttons */}
+                    <div className="flex space-x-3 mt-6 pt-4 border-t border-secondary-200">
                       <button className="btn-secondary text-sm">
                         View Details
                       </button>
