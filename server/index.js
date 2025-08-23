@@ -729,6 +729,852 @@ app.post('/api/job-prep/generate-path', async (req, res) => {
   }
 });
 
+// Mock Interview System
+
+// Start a new mock interview
+app.post('/api/mock-interview/start', async (req, res) => {
+  try {
+    const { mode, userLevel, jobDescription } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    if (!mode) {
+      return res.status(400).json({ message: 'Interview mode is required' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Validate user object has required properties
+    if (!user.name || !user._id) {
+      console.error('Invalid user object:', user);
+      return res.status(500).json({ message: 'Invalid user data' });
+    }
+    
+    // Create interview session
+    const sessionId = 'interview-' + Date.now();
+    const session = {
+      id: sessionId,
+      userId: user._id,
+      mode: mode,
+      userLevel: userLevel || 'intermediate',
+      jobDescription: jobDescription || null,
+      startTime: new Date(),
+      status: 'active',
+      questions: [],
+      answers: [],
+      scores: [],
+      currentQuestionIndex: 0,
+      jobAnalysis: null
+    };
+    
+    // Initialize user's interview data if not exists
+    if (!user.mockInterviews) {
+      user.mockInterviews = [];
+    }
+    
+    user.mockInterviews.push(session);
+    
+    let firstQuestion, welcomeMessage, jobAnalysis;
+    
+    if (jobDescription) {
+      // Use AI to analyze job and generate tailored questions
+      console.log('Analyzing job description with AI...');
+      const aiResponse = await analyzeJobAndGenerateQuestions(jobDescription, mode, userLevel);
+      
+      jobAnalysis = aiResponse.jobAnalysis;
+      session.questions = aiResponse.interviewQuestions;
+      session.jobAnalysis = jobAnalysis;
+      
+      // Use the first AI-generated question
+      firstQuestion = aiResponse.interviewQuestions[0];
+      
+      // Generate personalized welcome message
+      welcomeMessage = `Welcome to your ${mode} interview! I've analyzed the job description for ${jobAnalysis.companyCulture || 'this role'} and prepared questions specifically for a ${jobAnalysis.experienceLevel} level position. The role requires skills in ${jobAnalysis.requiredSkills.join(', ')}. Let's start with the first question!`;
+      
+    } else {
+      // Fallback to generic questions
+      firstQuestion = generateInterviewQuestion(mode, userLevel);
+      welcomeMessage = generateInterviewWelcomeMessage(mode, userLevel);
+    }
+    
+    console.log(`Mock interview started: ${mode} for ${user.name}${jobDescription ? ' with job-specific questions' : ''}`);
+    
+    res.json({
+      message: 'Interview started successfully',
+      session: session,
+      firstQuestion: firstQuestion,
+      welcomeMessage: welcomeMessage,
+      jobAnalysis: jobAnalysis,
+      totalQuestions: session.questions.length || 1
+    });
+    
+  } catch (error) {
+    console.error('Error starting mock interview:', error);
+    res.status(500).json({ 
+      message: 'Failed to start interview',
+      error: error.message 
+    });
+  }
+});
+
+    // Submit answer and get feedback
+    app.post('/api/mock-interview/submit-answer', async (req, res) => {
+      try {
+        const { sessionId, questionId, answer, mode } = req.body;
+        
+        if (!currentUserEmail) {
+          return res.status(401).json({ message: 'Not authenticated' });
+        }
+        
+        if (!sessionId || !answer) {
+          return res.status(400).json({ message: 'Session ID and answer are required' });
+        }
+        
+        const user = userDatabase.get(currentUserEmail);
+        if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        
+        // Validate user object
+        if (!user.mockInterviews || !Array.isArray(user.mockInterviews)) {
+          console.error('User mockInterviews not properly initialized:', user);
+          return res.status(500).json({ message: 'User interview data not initialized' });
+        }
+        
+        const session = user.mockInterviews.find(s => s.id === sessionId);
+        if (!session) {
+          return res.status(404).json({ message: 'Interview session not found' });
+        }
+    
+    // Store answer
+    session.answers.push({
+      questionId: questionId,
+      answer: answer,
+      timestamp: new Date()
+    });
+    
+    // Generate feedback using AI
+    const currentQuestion = session.questions[session.currentQuestionIndex] || currentQuestion;
+    const jobContext = session.jobAnalysis ? `Role requiring ${session.jobAnalysis.requiredSkills.join(', ')}` : 'General technical role';
+    
+    const feedback = await generateInterviewFeedback(answer, mode, session.userLevel, currentQuestion, jobContext);
+    
+    // Store score and detailed feedback
+    session.scores.push(feedback.score);
+    session.answers[session.answers.length - 1].feedback = feedback;
+    
+    // Check if interview should continue or end
+    const totalQuestions = session.questions.length || 5;
+    const shouldContinue = session.answers.length < totalQuestions;
+    
+    let nextQuestion = null;
+    let interviewComplete = false;
+    let finalFeedback = null;
+    
+    if (shouldContinue) {
+      // Get next question from AI-generated list or fallback
+      if (session.questions && session.questions.length > session.currentQuestionIndex + 1) {
+        nextQuestion = session.questions[session.currentQuestionIndex + 1];
+        session.currentQuestionIndex++;
+      } else {
+        // Fallback to generic question
+        nextQuestion = generateInterviewQuestion(mode, userLevel);
+        session.currentQuestionIndex++;
+      }
+    } else {
+      // Interview complete
+      interviewComplete = true;
+      session.status = 'completed';
+      session.endTime = new Date();
+      session.duration = Math.round((session.endTime - session.startTime) / 1000 / 60);
+      
+      // Generate final feedback
+      finalFeedback = await generateFinalFeedback(session, mode);
+    }
+    
+    res.json({
+      message: 'Answer submitted successfully',
+      feedback: feedback.message,
+      score: feedback.score,
+      suggestions: feedback.suggestions,
+      nextQuestion: nextQuestion,
+      interviewComplete: interviewComplete,
+      finalFeedback: finalFeedback
+    });
+    
+  } catch (error) {
+    console.error('Error submitting answer:', error);
+    res.status(500).json({ 
+      message: 'Failed to submit answer',
+      error: error.message 
+    });
+  }
+});
+
+// Start interview with job description analysis
+app.post('/api/mock-interview/start-with-job', async (req, res) => {
+  try {
+    const { mode, userLevel, jobDescription, jobTitle, company } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    if (!mode || !jobDescription) {
+      return res.status(400).json({ message: 'Interview mode and job description are required' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Validate user object
+    if (!user.name || !user._id) {
+      console.error('Invalid user object:', user);
+      return res.status(500).json({ message: 'Invalid user data' });
+    }
+    
+    // Create interview session with job context
+    const sessionId = 'interview-' + Date.now();
+    const session = {
+      id: sessionId,
+      userId: user._id,
+      mode: mode,
+      userLevel: userLevel || 'intermediate',
+      jobDescription: jobDescription,
+      jobTitle: jobTitle || 'Technical Role',
+      company: company || 'Company',
+      startTime: new Date(),
+      status: 'active',
+      questions: [],
+      answers: [],
+      scores: [],
+      currentQuestionIndex: 0,
+      jobAnalysis: null
+    };
+    
+    // Initialize user's interview data if not exists
+    if (!user.mockInterviews) {
+      user.mockInterviews = [];
+    }
+    
+    user.mockInterviews.push(session);
+    
+    // Use AI to analyze job and generate tailored questions
+    console.log('Starting AI-powered job analysis...');
+    const aiResponse = await analyzeJobAndGenerateQuestions(jobDescription, mode, userLevel);
+    
+    session.jobAnalysis = aiResponse.jobAnalysis;
+    session.questions = aiResponse.interviewQuestions;
+    
+    // Use the first AI-generated question
+    const firstQuestion = aiResponse.interviewQuestions[0];
+    
+    // Generate personalized welcome message
+    const welcomeMessage = `Welcome to your ${mode} interview for ${jobTitle || 'this role'} at ${company || 'the company'}! I've analyzed the job description and prepared ${aiResponse.interviewQuestions.length} tailored questions. This role requires skills in ${aiResponse.jobAnalysis.requiredSkills.join(', ')} and is looking for a ${aiResponse.jobAnalysis.experienceLevel} level candidate. Let's begin!`;
+    
+    console.log(`AI-powered interview started: ${mode} for ${user.name} targeting ${jobTitle || 'role'} at ${company || 'company'}`);
+    
+    res.json({
+      message: 'AI-powered interview started successfully',
+      session: session,
+      firstQuestion: firstQuestion,
+      welcomeMessage: welcomeMessage,
+      jobAnalysis: aiResponse.jobAnalysis,
+      totalQuestions: aiResponse.interviewQuestions.length,
+      nextQuestionIndex: 1
+    });
+    
+  } catch (error) {
+    console.error('Error starting AI-powered interview:', error);
+    res.status(500).json({ 
+      message: 'Failed to start AI-powered interview',
+      error: error.message 
+    });
+  }
+});
+
+// End interview early
+app.post('/api/mock-interview/end', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    if (!sessionId) {
+      return res.status(400).json({ message: 'Session ID is required' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const session = user.mockInterviews?.find(s => s.id === sessionId);
+    if (!session) {
+      return res.status(404).json({ message: 'Interview session not found' });
+    }
+    
+    // End session
+    session.status = 'completed';
+    session.endTime = new Date();
+    session.duration = Math.round((session.endTime - session.startTime) / 1000 / 60);
+    
+    // Generate final feedback
+    const finalFeedback = await generateFinalFeedback(session, session.mode);
+    
+    console.log(`Mock interview ended early: ${session.mode} for ${user.name}`);
+    
+    res.json({
+      message: 'Interview ended successfully',
+      feedback: finalFeedback
+    });
+    
+  } catch (error) {
+    console.error('Error ending interview:', error);
+    res.status(500).json({ 
+      message: 'Failed to end interview',
+      error: error.message 
+    });
+  }
+});
+
+// Save interview feedback
+app.post('/api/mock-interview/save', async (req, res) => {
+  try {
+    const { sessionId, feedback, mode } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    if (!sessionId || !feedback) {
+      return res.status(400).json({ message: 'Session ID and feedback are required' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const session = user.mockInterviews?.find(s => s.id === sessionId);
+    if (!session) {
+      return res.status(404).json({ message: 'Interview session not found' });
+    }
+    
+    // Update session with feedback
+    session.feedback = feedback;
+    session.saved = true;
+    
+    console.log(`Mock interview feedback saved: ${mode} for ${user.name}`);
+    
+    res.json({
+      message: 'Interview feedback saved successfully',
+      session: session
+    });
+    
+  } catch (error) {
+    console.error('Error saving interview feedback:', error);
+    res.status(500).json({ 
+      message: 'Failed to save feedback',
+      error: error.message 
+    });
+  }
+});
+
+// Get interview history
+app.get('/api/mock-interview/history', async (req, res) => {
+  try {
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const interviews = user.mockInterviews || [];
+    
+    // Sort by completion time (newest first)
+    interviews.sort((a, b) => {
+      if (a.endTime && b.endTime) {
+        return new Date(b.endTime) - new Date(a.endTime);
+      }
+      return 0;
+    });
+    
+    res.json({
+      interviews: interviews
+    });
+    
+  } catch (error) {
+    console.error('Error fetching interview history:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch interview history',
+      error: error.message 
+    });
+  }
+});
+
+// Get interview statistics
+app.get('/api/mock-interview/stats', async (req, res) => {
+  try {
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const interviews = user.mockInterviews || [];
+    const completedInterviews = interviews.filter(i => i.status === 'completed');
+    
+    const stats = {
+      totalInterviews: interviews.length,
+      completedInterviews: completedInterviews.length,
+      averageScore: completedInterviews.length > 0 
+        ? Math.round(completedInterviews.reduce((sum, i) => sum + (i.scores?.reduce((s, score) => s + score, 0) || 0), 0) / completedInterviews.length)
+        : 0,
+      questionsAnswered: interviews.reduce((sum, i) => sum + (i.answers?.length || 0), 0),
+      totalTime: interviews.reduce((sum, i) => sum + (i.duration || 0), 0),
+      modeBreakdown: {}
+    };
+    
+    // Calculate mode breakdown
+    interviews.forEach(interview => {
+      if (!stats.modeBreakdown[interview.mode]) {
+        stats.modeBreakdown[interview.mode] = 0;
+      }
+      stats.modeBreakdown[interview.mode]++;
+    });
+    
+    res.json({
+      stats: stats
+    });
+    
+  } catch (error) {
+    console.error('Error fetching interview stats:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch interview stats',
+      error: error.message 
+    });
+  }
+});
+
+// Helper functions for mock interviews
+function generateInterviewQuestion(mode, userLevel) {
+  const questions = {
+    technical: [
+      {
+        id: 'tech-1',
+        title: 'Reverse a String',
+        description: 'Write a function to reverse a string without using built-in reverse methods.',
+        hints: ['Think about using a loop', 'Consider character by character approach', 'What data structure could help?']
+      },
+      {
+        id: 'tech-2',
+        title: 'Find Missing Number',
+        description: 'Given an array containing n distinct numbers from 0 to n, find the missing number.',
+        hints: ['Use mathematical formula', 'Consider XOR operation', 'Think about sum of first n numbers']
+      },
+      {
+        id: 'tech-3',
+        title: 'Valid Parentheses',
+        description: 'Check if a string of parentheses is valid (properly closed and nested).',
+        hints: ['Use a stack data structure', 'Process character by character', 'Handle edge cases']
+      }
+    ],
+    'system-design': [
+      {
+        id: 'sys-1',
+        title: 'Design a URL Shortener',
+        description: 'Design a system that can shorten long URLs to short URLs.',
+        hints: ['Consider scalability requirements', 'Think about database design', 'Plan for high traffic']
+      },
+      {
+        id: 'sys-2',
+        title: 'Design a Chat Application',
+        description: 'Design a real-time chat application like WhatsApp or Slack.',
+        hints: ['Consider real-time communication', 'Think about message persistence', 'Plan for user management']
+      },
+      {
+        id: 'sys-3',
+        title: 'Design a Search Engine',
+        description: 'Design a search engine that can index and search through millions of documents.',
+        hints: ['Consider indexing strategy', 'Think about ranking algorithms', 'Plan for distributed systems']
+      }
+    ],
+    behavioral: [
+      {
+        id: 'behav-1',
+        title: 'Leadership Challenge',
+        description: 'Tell me about a time when you had to lead a team through a difficult situation.',
+        hints: ['Use STAR method', 'Focus on your actions', 'Show learning outcomes']
+      },
+      {
+        id: 'behav-2',
+        title: 'Conflict Resolution',
+        description: 'Describe a situation where you had to resolve a conflict between team members.',
+        hints: ['Show empathy', 'Focus on solution', 'Demonstrate communication skills']
+      },
+      {
+        id: 'behav-3',
+        title: 'Learning from Failure',
+        description: 'Tell me about a time when you failed at something and what you learned from it.',
+        hints: ['Be honest', 'Show growth mindset', 'Demonstrate resilience']
+      }
+    ]
+  };
+  
+  const modeQuestions = questions[mode] || questions.technical;
+  const randomIndex = Math.floor(Math.random() * modeQuestions.length);
+  return modeQuestions[randomIndex];
+}
+
+function generateInterviewWelcomeMessage(mode, userLevel) {
+  const messages = {
+    technical: `Welcome to your technical interview! I'll be asking you coding and algorithm questions. Take your time to think through each problem, and feel free to ask clarifying questions. Let's start with the first question.`,
+    'system-design': `Welcome to your system design interview! I'll present you with system design challenges. Think about scalability, reliability, and trade-offs. Don't hesitate to ask questions to clarify requirements.`,
+    behavioral: `Welcome to your behavioral interview! I'll ask you about your past experiences and how you handle various situations. Use specific examples and the STAR method when possible.`
+  };
+  
+  return messages[mode] || messages.technical;
+}
+
+async function generateInterviewFeedback(answer, mode, userLevel, question, jobContext) {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('OpenAI API key not found, using fallback feedback');
+      return generateFallbackInterviewFeedback(mode, userLevel);
+    }
+
+    const systemPrompt = `You are an expert technical interviewer providing feedback on a candidate's answer. Your task is to:
+
+1. ANALYZE the candidate's answer for:
+   - Technical accuracy and depth
+   - Problem-solving approach and logic
+   - Communication clarity and structure
+   - Relevance to the specific question and job requirements
+
+2. PROVIDE constructive feedback that:
+   - Acknowledges strengths and good approaches
+   - Identifies areas for improvement
+   - Gives specific, actionable suggestions
+   - Relates feedback to the job requirements
+
+3. SCORE the answer (1-10) based on:
+   - Technical accuracy (40%)
+   - Problem-solving approach (30%)
+   - Communication clarity (20%)
+   - Job relevance (10%)
+
+4. FORMAT your response as a JSON object:
+{
+  "message": "Overall feedback message",
+  "score": 8,
+  "detailedFeedback": {
+    "technicalAccuracy": "Feedback on technical aspects",
+    "problemSolving": "Feedback on approach and logic",
+    "communication": "Feedback on clarity and structure",
+    "jobRelevance": "How well this relates to the job"
+  },
+  "suggestions": ["suggestion1", "suggestion2", "suggestion3"],
+  "strengths": ["strength1", "strength2"],
+  "improvementAreas": ["area1", "area2"]
+}
+
+Be encouraging but honest. Focus on helping the candidate improve and understand how their answer relates to the job requirements.`;
+
+    const userPrompt = `Please evaluate this interview answer:
+
+QUESTION: ${question?.title || 'Interview question'}
+QUESTION DESCRIPTION: ${question?.description || 'Question details'}
+INTERVIEW MODE: ${mode}
+CANDIDATE LEVEL: ${userLevel}
+JOB CONTEXT: ${jobContext || 'General technical role'}
+
+CANDIDATE'S ANSWER:
+${answer}
+
+Please provide detailed feedback, score, and suggestions.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 1500
+    });
+
+    const content = response.choices[0].message.content;
+    console.log('OpenAI feedback response:', content);
+
+    try {
+      const parsedResponse = JSON.parse(content);
+      return {
+        message: parsedResponse.message || 'Thank you for your answer. Here is my feedback.',
+        score: parsedResponse.score || 7,
+        suggestions: parsedResponse.suggestions || [],
+        strengths: parsedResponse.strengths || [],
+        improvementAreas: parsedResponse.improvementAreas || [],
+        detailedFeedback: parsedResponse.detailedFeedback || {}
+      };
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI feedback response:', parseError);
+      console.log('Raw feedback response:', content);
+      return generateFallbackInterviewFeedback(mode, userLevel);
+    }
+
+  } catch (error) {
+    console.error('Error in AI interview feedback:', error);
+    return generateFallbackInterviewFeedback(mode, userLevel);
+  }
+}
+
+// Fallback feedback function
+function generateFallbackInterviewFeedback(mode, userLevel) {
+  const feedbacks = {
+    technical: [
+      {
+        message: "Good approach! You've shown solid problem-solving skills. Consider optimizing the time complexity.",
+        score: Math.floor(Math.random() * 3) + 7, // 7-9
+        suggestions: ["Think about edge cases", "Consider time complexity", "Test with examples"],
+        strengths: ["Logical thinking", "Basic understanding"],
+        improvementAreas: ["Optimization", "Edge case handling"]
+      },
+      {
+        message: "Excellent solution! You've demonstrated strong algorithmic thinking and clean code structure.",
+        score: Math.floor(Math.random() * 2) + 8, // 8-9
+        suggestions: ["Great job!", "Consider space complexity", "Think about scalability"],
+        strengths: ["Strong technical skills", "Clear communication"],
+        improvementAreas: ["Performance optimization", "Scalability thinking"]
+      }
+    ],
+    'system-design': [
+      {
+        message: "Good system thinking! You've covered the main components well. Consider more details on scalability.",
+        score: Math.floor(Math.random() * 3) + 6, // 6-8
+        suggestions: ["Add more scalability details", "Consider failure scenarios", "Think about monitoring"],
+        strengths: ["Basic system understanding", "Component identification"],
+        improvementAreas: ["Scalability details", "Failure handling"]
+      }
+    ],
+    behavioral: [
+      {
+        message: "Great example! You've used the STAR method effectively. Consider adding more specific outcomes.",
+        score: Math.floor(Math.random() * 3) + 7, // 7-9
+        suggestions: ["Add measurable outcomes", "Show learning impact", "Demonstrate growth"],
+        strengths: ["Good storytelling", "STAR method usage"],
+        improvementAreas: ["Quantifiable results", "Learning reflection"]
+      }
+    ]
+  };
+  
+  const modeFeedbacks = feedbacks[mode] || feedbacks.technical;
+  const randomIndex = Math.floor(Math.random() * modeFeedbacks.length);
+  return modeFeedbacks[randomIndex];
+}
+
+async function generateFinalFeedback(session, mode) {
+  const totalScore = session.scores.reduce((sum, score) => sum + score, 0);
+  const averageScore = Math.round(totalScore / session.scores.length);
+  
+  const categories = [
+    {
+      name: 'Technical Knowledge',
+      score: Math.floor(Math.random() * 3) + 6,
+      feedback: 'You demonstrated solid technical understanding with room for improvement in advanced concepts.',
+      suggestions: ['Practice more complex algorithms', 'Review system design patterns', 'Work on time complexity analysis']
+    },
+    {
+      name: 'Problem Solving',
+      score: Math.floor(Math.random() * 3) + 6,
+      feedback: 'Good problem-solving approach, but could benefit from more structured thinking.',
+      suggestions: ['Use systematic problem-solving frameworks', 'Practice breaking down complex problems', 'Work on edge case identification']
+    },
+    {
+      name: 'Communication',
+      score: Math.floor(Math.random() * 3) + 7,
+      feedback: 'Clear communication skills demonstrated throughout the interview.',
+      suggestions: ['Practice explaining complex concepts simply', 'Work on active listening', 'Improve question-asking skills']
+    }
+  ];
+  
+  return {
+    overallScore: averageScore,
+    categories: categories,
+    summary: `You completed the ${mode} interview with an average score of ${averageScore}/10. Keep practicing to improve your skills!`
+  };
+}
+
+// AI-Powered Job Analysis and Interview Question Generation
+async function analyzeJobAndGenerateQuestions(jobDescription, mode, userLevel) {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('OpenAI API key not found, using fallback questions');
+      return generateFallbackInterviewQuestions(mode, userLevel);
+    }
+
+    const systemPrompt = `You are an expert technical interviewer and job analyst. Your task is to:
+
+1. ANALYZE the job description to identify:
+   - Required technical skills and technologies
+   - Experience level and seniority
+   - Key responsibilities and challenges
+   - Company culture and values
+
+2. GENERATE 5 tailored interview questions based on:
+   - The specific job requirements
+   - The interview mode (technical/system-design/behavioral)
+   - The candidate's experience level (${userLevel})
+
+3. FORMAT your response as a JSON object with this structure:
+{
+  "jobAnalysis": {
+    "requiredSkills": ["skill1", "skill2"],
+    "experienceLevel": "junior/mid/senior",
+    "keyResponsibilities": ["responsibility1", "responsibility2"],
+    "companyCulture": "description"
+  },
+  "interviewQuestions": [
+    {
+      "id": "q1",
+      "type": "technical/system-design/behavioral",
+      "title": "Question title",
+      "description": "Detailed question description",
+      "context": "Why this question is relevant to the job",
+      "expectedAnswer": "What a good answer should include",
+      "difficulty": "easy/medium/hard",
+      "hints": ["hint1", "hint2"],
+      "scoringCriteria": {
+        "technicalAccuracy": "What to look for",
+        "problemSolving": "How they approach problems",
+        "communication": "How clearly they explain"
+      }
+    }
+  ]
+}
+
+Focus on questions that directly relate to the job requirements and will help assess if the candidate can handle the specific challenges mentioned in the job description.`;
+
+    const userPrompt = `Please analyze this job description and generate tailored interview questions:
+
+JOB DESCRIPTION:
+${jobDescription}
+
+INTERVIEW MODE: ${mode}
+CANDIDATE LEVEL: ${userLevel}
+
+Generate questions that will help determine if this candidate is a good fit for this specific role.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
+    });
+
+    const content = response.choices[0].message.content;
+    console.log('OpenAI response for job analysis:', content);
+
+    try {
+      const parsedResponse = JSON.parse(content);
+      return parsedResponse;
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI response:', parseError);
+      console.log('Raw response:', content);
+      return generateFallbackInterviewQuestions(mode, userLevel);
+    }
+
+  } catch (error) {
+    console.error('Error in AI job analysis:', error);
+    return generateFallbackInterviewQuestions(mode, userLevel);
+  }
+}
+
+// Fallback function for when OpenAI is not available
+function generateFallbackInterviewQuestions(mode, userLevel) {
+  const questions = {
+    technical: [
+      {
+        id: 'q1',
+        type: 'technical',
+        title: 'Data Structure Implementation',
+        description: 'Implement a stack data structure with push, pop, and peek operations. Explain your approach and time complexity.',
+        context: 'This tests fundamental programming knowledge and problem-solving skills.',
+        expectedAnswer: 'Should implement stack using array or linked list, explain O(1) operations.',
+        difficulty: 'medium',
+        hints: ['Think about LIFO principle', 'Consider edge cases like empty stack'],
+        scoringCriteria: {
+          technicalAccuracy: 'Correct implementation and time complexity',
+          problemSolving: 'Logical approach and edge case handling',
+          communication: 'Clear explanation of the solution'
+        }
+      }
+    ],
+    'system-design': [
+      {
+        id: 'q1',
+        type: 'system-design',
+        title: 'URL Shortener Service',
+        description: 'Design a URL shortening service like bit.ly. Consider scalability, reliability, and performance.',
+        context: 'This tests system design thinking and architecture skills.',
+        expectedAnswer: 'Should cover load balancing, caching, database design, and scaling strategies.',
+        difficulty: 'medium',
+        hints: ['Start with basic components', 'Think about traffic patterns'],
+        scoringCriteria: {
+          technicalAccuracy: 'Correct technical decisions',
+          problemSolving: 'Systematic approach to design',
+          communication: 'Clear architecture explanation'
+        }
+      }
+    ],
+    behavioral: [
+      {
+        id: 'q1',
+        type: 'behavioral',
+        title: 'Conflict Resolution',
+        description: 'Tell me about a time when you had a disagreement with a team member. How did you handle it?',
+        context: 'This tests interpersonal skills and conflict resolution abilities.',
+        expectedAnswer: 'Should use STAR method, show empathy and problem-solving.',
+        difficulty: 'medium',
+        hints: ['Use specific examples', 'Focus on the resolution'],
+        scoringCriteria: {
+          technicalAccuracy: 'Relevant example and outcome',
+          problemSolving: 'Effective conflict resolution approach',
+          communication: 'Clear storytelling and reflection'
+        }
+      }
+    ]
+  };
+
+  return {
+    jobAnalysis: {
+      requiredSkills: ['General programming', 'Problem solving'],
+      experienceLevel: userLevel,
+      keyResponsibilities: ['Technical implementation', 'Team collaboration'],
+      companyCulture: 'Collaborative and growth-oriented'
+    },
+    interviewQuestions: questions[mode] || questions.technical
+  };
+}
+
 // Save learning path endpoint
 app.post('/api/job-prep/save-path', async (req, res) => {
   try {
@@ -1996,9 +2842,19 @@ app.get('/api/test/populate-data', (req, res) => {
   });
 });
 
+// Global error handler for uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  console.error('Stack trace:', error.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Express error:', err.stack);
   res.status(500).json({ 
     message: 'Something went wrong!',
     error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'

@@ -17,14 +17,44 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
 
-  // Set up axios defaults
+  // Set up axios defaults and interceptors
   useEffect(() => {
+    // Add request interceptor for debugging
+    const requestInterceptor = axios.interceptors.request.use(
+      (config) => {
+        console.log('🚀 Axios Request:', config.method?.toUpperCase(), config.url, config.data);
+        return config;
+      },
+      (error) => {
+        console.error('❌ Axios Request Error:', error);
+        return Promise.reject(error);
+      }
+    );
+
+    // Add response interceptor for debugging
+    const responseInterceptor = axios.interceptors.response.use(
+      (response) => {
+        console.log('✅ Axios Response:', response.status, response.config.url, response.data);
+        return response;
+      },
+      (error) => {
+        console.error('❌ Axios Response Error:', error.response?.status, error.config?.url, error.message);
+        return Promise.reject(error);
+      }
+    );
+
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       fetchUser();
     } else {
       setLoading(false);
     }
+
+    // Cleanup interceptors
+    return () => {
+      axios.interceptors.request.eject(requestInterceptor);
+      axios.interceptors.response.eject(responseInterceptor);
+    };
   }, [token]);
 
   const fetchUser = async () => {
@@ -60,7 +90,19 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const response = await axios.post('/api/auth/register', userData);
+      console.log('Starting registration request...');
+      console.log('Request data:', userData);
+      
+      // Add timeout to prevent hanging requests
+      const response = await axios.post('/api/auth/register', userData, {
+        timeout: 10000, // 10 second timeout
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('Registration response received:', response.data);
+      
       const { token: newToken, user: newUser } = response.data;
       
       localStorage.setItem('token', newToken);
@@ -71,7 +113,17 @@ export const AuthProvider = ({ children }) => {
       toast.success('Account created successfully!');
       return { success: true };
     } catch (error) {
-      const message = error.response?.data?.message || 'Registration failed';
+      console.error('Registration error details:', error);
+      
+      let message = 'Registration failed';
+      if (error.code === 'ECONNABORTED') {
+        message = 'Request timed out. Please try again.';
+      } else if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.message) {
+        message = error.message;
+      }
+      
       toast.error(message);
       return { success: false, message };
     }
