@@ -87,7 +87,27 @@ const Dashboard = () => {
           const sessionsResponse = await fetchWithRetry('/api/tutoring/sessions');
           if (sessionsResponse.ok) {
             const sessionsData = await sessionsResponse.json();
-            setRecentSessions(sessionsData.sessions.slice(0, 3)); // Show last 3 sessions
+            
+            // Sort sessions by completion time (newest completed first, then active sessions)
+            const sortedSessions = sessionsData.sessions.sort((a, b) => {
+              // If both are completed, sort by end time (newest first)
+              if (a.status === 'completed' && b.status === 'completed') {
+                const aEndTime = a.endTime ? new Date(a.endTime) : new Date(0);
+                const bEndTime = b.endTime ? new Date(b.endTime) : new Date(0);
+                return bEndTime - aEndTime;
+              }
+              
+              // If only one is completed, put completed ones first
+              if (a.status === 'completed' && b.status !== 'completed') return -1;
+              if (a.status !== 'completed' && b.status === 'completed') return 1;
+              
+              // If both are active, sort by start time (newest first)
+              const aStartTime = a.startTime ? new Date(a.startTime) : new Date(0);
+              const bStartTime = b.startTime ? new Date(b.startTime) : new Date(0);
+              return bStartTime - aStartTime;
+            });
+            
+            setRecentSessions(sortedSessions.slice(0, 5)); // Show last 5 sessions instead of 3
           }
         } catch (error) {
           console.error('Error fetching recent sessions:', error);
@@ -542,7 +562,7 @@ const Dashboard = () => {
             </Link>
           </div>
           
-          <div className="space-y-4">
+          <div className="max-h-64 overflow-y-auto pr-2 space-y-4 custom-scrollbar border border-secondary-100 rounded-lg p-4">
             {recentSessions.length > 0 ? (
               recentSessions.map((session) => (
                 <div 
@@ -598,6 +618,18 @@ const Dashboard = () => {
                 <Link to="/tutoring" className="text-primary-600 hover:text-primary-700 text-sm font-medium mt-2 inline-block">
                   Start your first session
                 </Link>
+              </div>
+            )}
+            
+            {/* Scroll indicator for sessions */}
+            {recentSessions.length > 3 && (
+              <div className="text-center pt-2 border-t border-secondary-100">
+                <div className="text-xs text-secondary-400 flex items-center justify-center">
+                  <span className="mr-1">Scroll to see more sessions</span>
+                  <svg className="w-3 h-3 animate-bounce" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
               </div>
             )}
           </div>
