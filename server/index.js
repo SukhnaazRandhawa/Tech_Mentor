@@ -476,6 +476,26 @@ app.post('/api/tutoring/execute-code', async (req, res) => {
   }
 });
 
+// Simple rate limiting for session operations
+const sessionRateLimit = new Map();
+
+const checkRateLimit = (key, limit = 5, windowMs = 60000) => {
+  const now = Date.now();
+  const userRequests = sessionRateLimit.get(key) || [];
+  
+  // Remove old requests outside the window
+  const validRequests = userRequests.filter(time => now - time < windowMs);
+  
+  if (validRequests.length >= limit) {
+    return false; // Rate limit exceeded
+  }
+  
+  // Add current request
+  validRequests.push(now);
+  sessionRateLimit.set(key, validRequests);
+  return true; // Within rate limit
+};
+
 app.post('/api/tutoring/end-session', (req, res) => {
   console.log('End tutoring session request:', req.body);
   
@@ -487,6 +507,15 @@ app.post('/api/tutoring/end-session', (req, res) => {
     const { sessionId } = req.body;
     if (!sessionId) {
       return res.status(400).json({ message: 'Session ID is required' });
+    }
+    
+    // Check rate limit
+    const rateLimitKey = `end-session-${currentUserEmail}`;
+    if (!checkRateLimit(rateLimitKey, 3, 60000)) { // 3 requests per minute
+      return res.status(429).json({ 
+        message: 'Too many session end requests. Please wait a moment and try again.',
+        retryAfter: 60
+      });
     }
     
     const user = userDatabase.get(currentUserEmail);

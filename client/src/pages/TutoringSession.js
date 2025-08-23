@@ -461,9 +461,45 @@ public class HelloWorld {
       if (response.ok) {
         console.log('Session ended successfully');
         navigate('/');
+      } else if (response.status === 429) {
+        // Rate limit hit - wait and retry once
+        console.log('Rate limit hit, waiting 2 seconds before retry...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        try {
+          const retryResponse = await fetch('/api/tutoring/end-session', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ sessionId: session.id })
+          });
+          
+          if (retryResponse.ok) {
+            console.log('Session ended successfully on retry');
+            navigate('/');
+          } else {
+            console.error('Failed to end session even after retry');
+            // Still navigate to prevent user from being stuck
+            navigate('/');
+          }
+        } catch (retryError) {
+          console.error('Error on retry:', retryError);
+          navigate('/');
+        }
       } else {
-        const errorData = await response.json();
-        console.error('Server error ending session:', errorData);
+        // Try to parse error response, but handle non-JSON responses gracefully
+        let errorMessage = 'Unknown server error';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (parseError) {
+          // If response is not JSON (like "Too many requests"), use status text
+          errorMessage = response.statusText || `HTTP ${response.status}`;
+        }
+        
+        console.error('Server error ending session:', errorMessage);
         // Still navigate to dashboard even if there's an error
         navigate('/');
       }

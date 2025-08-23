@@ -30,37 +30,72 @@ const Dashboard = () => {
       try {
         setIsLoading(true);
         
+        // Helper function to fetch with retry logic
+        const fetchWithRetry = async (url, options = {}) => {
+          try {
+            const response = await fetch(url, options);
+            if (response.ok) {
+              return response;
+            } else if (response.status === 429) {
+              // Rate limit hit - wait and retry once
+              console.log(`Rate limit hit for ${url}, waiting 2 seconds before retry...`);
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              return await fetch(url, options);
+            }
+            return response;
+          } catch (error) {
+            console.error(`Error fetching ${url}:`, error);
+            throw error;
+          }
+        };
+
         // Fetch recent activity
-        const activityResponse = await fetch('/api/dashboard/recent-activity');
-        if (activityResponse.ok) {
-          const activityData = await activityResponse.json();
-          setRecentActivity(activityData.activities);
+        try {
+          const activityResponse = await fetchWithRetry('/api/dashboard/recent-activity');
+          if (activityResponse.ok) {
+            const activityData = await activityResponse.json();
+            setRecentActivity(activityData.activities);
+          }
+        } catch (error) {
+          console.error('Error fetching recent activity:', error);
         }
         
         // Fetch today's goal
-        const goalResponse = await fetch('/api/dashboard/today-goal');
-        if (goalResponse.ok) {
-          const goalData = await goalResponse.json();
-          setTodayGoal(goalData.goal);
+        try {
+          const goalResponse = await fetchWithRetry('/api/dashboard/today-goal');
+          if (goalResponse.ok) {
+            const goalData = await goalResponse.json();
+            setTodayGoal(goalData.goal);
+          }
+        } catch (error) {
+          console.error('Error fetching today\'s goal:', error);
         }
         
         // Fetch statistics
-        const statsResponse = await fetch('/api/dashboard/stats');
-        if (statsResponse.ok) {
-          const statsData = await statsResponse.json();
-          setStats(statsData.stats);
+        try {
+          const statsResponse = await fetchWithRetry('/api/dashboard/stats');
+          if (statsResponse.ok) {
+            const statsData = await statsResponse.json();
+            setStats(statsData.stats);
+          }
+        } catch (error) {
+          console.error('Error fetching stats:', error);
         }
         
         // Fetch recent tutoring sessions
-        const sessionsResponse = await fetch('/api/tutoring/sessions');
-        if (sessionsResponse.ok) {
-          const sessionsData = await sessionsResponse.json();
-          setRecentSessions(sessionsData.sessions.slice(0, 3)); // Show last 3 sessions
+        try {
+          const sessionsResponse = await fetchWithRetry('/api/tutoring/sessions');
+          if (sessionsResponse.ok) {
+            const sessionsData = await sessionsResponse.json();
+            setRecentSessions(sessionsData.sessions.slice(0, 3)); // Show last 3 sessions
+          }
+        } catch (error) {
+          console.error('Error fetching recent sessions:', error);
         }
         
         // Load skill progress data from backend
         try {
-          const skillsResponse = await fetch('/api/dashboard/skills');
+          const skillsResponse = await fetchWithRetry('/api/dashboard/skills');
           if (skillsResponse.ok) {
             const skillsData = await skillsResponse.json();
             console.log('Dashboard skills from backend:', skillsData);
@@ -232,7 +267,7 @@ const Dashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <style jsx>{`
+      <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 6px;
         }
