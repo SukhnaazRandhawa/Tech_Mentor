@@ -34,6 +34,11 @@ function App() {
                     <TutoringSession />
                   </PrivateRoute>
                 } />
+                <Route path="/tutoring/:sessionId" element={
+                  <PrivateRoute>
+                    <TutoringSession />
+                  </PrivateRoute>
+                } />
                 <Route path="/job-prep" element={
                   <PrivateRoute>
                     <JobPreparation />

@@ -307,6 +307,8 @@ app.post('/api/tutoring/start-session', async (req, res) => {
     conversation: [],
     codeSnippets: [],
     conceptsCovered: [],
+    language: 'python', // Default language
+    code: '', // Store current code
     status: 'active'
   };
   
@@ -369,6 +371,10 @@ app.post('/api/tutoring/chat', async (req, res) => {
       if (session) {
         session.conversation.push(conversationEntry, aiEntry);
         session.conceptsCovered = [...new Set([...session.conceptsCovered, ...aiResponse.concepts])];
+        // Update session with current code and language if provided
+        if (codeSnippet) {
+          session.code = codeSnippet;
+        }
       }
     }
     
@@ -382,6 +388,43 @@ app.post('/api/tutoring/chat', async (req, res) => {
     console.error('Error generating AI response:', error);
     res.status(500).json({ 
       message: 'Failed to generate AI response',
+      error: error.message 
+    });
+  }
+});
+
+// Update session code and language
+app.post('/api/tutoring/update-session', async (req, res) => {
+  if (!currentUserEmail) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  
+  const { sessionId, code, language } = req.body;
+  const user = userDatabase.get(currentUserEmail);
+  
+  if (!sessionId) {
+    return res.status(400).json({ message: 'Session ID is required' });
+  }
+  
+  try {
+    const session = user.tutoringSessions?.find(s => s.id === sessionId);
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+    
+    // Update session data
+    if (code !== undefined) session.code = code;
+    if (language !== undefined) session.language = language;
+    
+    res.json({ 
+      message: 'Session updated successfully',
+      session: session
+    });
+    
+  } catch (error) {
+    console.error('Error updating session:', error);
+    res.status(500).json({ 
+      message: 'Failed to update session',
       error: error.message 
     });
   }

@@ -111,6 +111,86 @@ const TutoringSession = () => {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation]);
+
+  // Load existing session if sessionId is provided
+  useEffect(() => {
+    if (sessionId) {
+      loadExistingSession(sessionId);
+    }
+  }, [sessionId]);
+
+  // Update session code when it changes
+  useEffect(() => {
+    if (session && session.id && code && isSessionActive) {
+      // Debounce the update to avoid too many API calls
+      const timeoutId = setTimeout(() => {
+        updateSessionData({ code });
+      }, 1000);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [code, session, isSessionActive]);
+
+  // Load existing session data and conversation history
+  const loadExistingSession = async (id) => {
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/tutoring/sessions/${id}`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const sessionData = data.session;
+        
+        // Set all the session data
+        setSession(sessionData);
+        setConversation(sessionData.conversation || []);
+        setTopic(sessionData.topic || '');
+        setSkillLevel(sessionData.skillLevel || 'beginner');
+        setLanguage(sessionData.language || 'python');
+        setIsSessionActive(true);
+        
+        // Update editor with session code if it exists
+        if (sessionData.code && editorViewRef.current) {
+          const currentLang = supportedLanguages.find(lang => lang.value === sessionData.language || 'python');
+          const extensions = [
+            basicSetup,
+            currentLang ? currentLang.extension() : python(),
+            oneDark,
+            EditorView.updateListener.of((update) => {
+              if (update.docChanged) {
+                setCode(update.state.doc.toString());
+              }
+            })
+          ];
+          
+          const state = EditorState.create({
+            doc: sessionData.code,
+            extensions
+          });
+          
+          editorViewRef.current.setState(state);
+          setCode(sessionData.code);
+        }
+        
+        console.log('Existing session loaded:', sessionData);
+      } else {
+        console.error('Failed to load session:', response.status);
+        // If session not found, redirect to new session
+        navigate('/tutoring');
+      }
+    } catch (error) {
+      console.error('Error loading existing session:', error);
+      // If error occurs, redirect to new session
+      navigate('/tutoring');
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   // Get default code based on language
   const getDefaultCode = (lang) => {
@@ -420,6 +500,33 @@ public class HelloWorld {
       editorViewRef.current.setState(state);
       setCode(getDefaultCode(newLanguage));
     }
+    
+    // Update session with new language
+    if (session && session.id) {
+      updateSessionData({ language: newLanguage });
+    }
+  };
+
+  // Update session data (code, language) on backend
+  const updateSessionData = async (updates) => {
+    if (!session || !session.id) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      await fetch('/api/tutoring/update-session', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          sessionId: session.id,
+          ...updates
+        })
+      });
+    } catch (error) {
+      console.error('Error updating session:', error);
+    }
   };
   
   // Save session
@@ -441,6 +548,27 @@ public class HelloWorld {
     URL.revokeObjectURL(url);
   };
   
+  // Show loading state when resuming a session
+  if (sessionId && isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="text-center">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-secondary-900 mb-4">
+              Resuming Your Session...
+            </h1>
+            <p className="text-secondary-600">
+              Loading your previous conversation and code
+            </p>
+          </div>
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!isSessionActive) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -529,9 +657,19 @@ public class HelloWorld {
             <div>
               <h1 className="text-lg sm:text-xl font-semibold text-secondary-900">
                 {session?.topic} Tutoring
+                {sessionId && (
+                  <span className="ml-2 inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                    Resumed
+                  </span>
+                  )}
               </h1>
               <p className="text-xs sm:text-sm text-secondary-600">
                 Skill Level: {skillLevel.charAt(0).toUpperCase() + skillLevel.slice(1)}
+                {sessionId && session?.startTime && (
+                  <span className="ml-2 text-green-600">
+                    • Started: {new Date(session.startTime).toLocaleDateString()}
+                  </span>
+                )}
               </p>
             </div>
           </div>

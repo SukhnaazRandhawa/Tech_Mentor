@@ -184,15 +184,8 @@ const Dashboard = () => {
 
   // Handle clicking on a recent session to continue it
   const handleSessionClick = (session) => {
-    // Navigate to tutoring with the session topic and level
-    navigate('/tutoring', { 
-      state: { 
-        topic: session.topic, 
-        skillLevel: session.skillLevel,
-        continueSession: true,
-        sessionId: session.id
-      } 
-    });
+    // Navigate to specific session URL to resume conversation
+    navigate(`/tutoring/${session.id}`);
   };
 
   const quickActions = [
