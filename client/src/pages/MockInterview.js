@@ -2,6 +2,7 @@ import {
   BarChart3,
   BookOpen,
   Brain,
+  Briefcase,
   CheckCircle,
   ChevronLeft,
   Clock,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import JobDescriptionUpload from '../components/JobDescriptionUpload';
 import { useAuth } from '../contexts/AuthContext';
 
 const MockInterview = () => {
@@ -56,6 +58,10 @@ const MockInterview = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [interviewStats, setInterviewStats] = useState({});
   const [sessionData, setSessionData] = useState(null);
+  
+  // Job-specific interview state
+  const [showJobUpload, setShowJobUpload] = useState(false);
+  const [jobData, setJobData] = useState(null);
   
   const chatEndRef = useRef(null);
   const [conversation, setConversation] = useState([]);
@@ -257,6 +263,74 @@ const MockInterview = () => {
     }
   };
 
+  // Handle job description analysis
+  const handleJobAnalyzed = (jobInfo) => {
+    setJobData(jobInfo);
+    setShowJobUpload(false);
+    // Start the interview with the analyzed job
+    startInterviewWithJob(jobInfo);
+  };
+
+  // Start interview with specific job
+  const startInterviewWithJob = async (jobInfo) => {
+    try {
+      setIsLoading(true);
+      setActiveTab('interview');
+      
+      const response = await fetch('/api/mock-interview/start-with-job', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: interviewMode,
+          userLevel: 'intermediate',
+          jobDescription: jobInfo.jobDescription,
+          jobTitle: jobInfo.jobTitle,
+          company: jobInfo.company
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Job-specific interview started:', data);
+        
+        setSessionData(data.session);
+        setIsInterviewActive(true);
+        
+        // Add welcome message
+        const welcomeMessage = {
+          id: Date.now(),
+          speaker: 'interviewer',
+          message: data.welcomeMessage,
+          timestamp: new Date(),
+          type: 'welcome'
+        };
+        setConversation([welcomeMessage]);
+        
+        // Set first question
+        if (data.firstQuestion) {
+          setCurrentQuestion(data.firstQuestion);
+        }
+        
+        // Store job context for the interview
+        setJobData({
+          ...jobInfo,
+          analysis: data.jobAnalysis,
+          totalQuestions: data.totalQuestions
+        });
+        
+      } else {
+        throw new Error('Failed to start job-specific interview');
+      }
+    } catch (error) {
+      console.error('Error starting job-specific interview:', error);
+      alert('Failed to start interview. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // End interview early
   const endInterview = async () => {
     if (!sessionData) return;
@@ -336,6 +410,27 @@ const MockInterview = () => {
     return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
   };
 
+  // Render job upload screen
+  if (showJobUpload) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6">
+          <button
+            onClick={() => setShowJobUpload(false)}
+            className="flex items-center text-secondary-600 hover:text-secondary-900 mb-4"
+          >
+            <ChevronLeft className="h-5 w-5 mr-2" />
+            Back to Interview Selection
+          </button>
+        </div>
+        <JobDescriptionUpload
+          onJobAnalyzed={handleJobAnalyzed}
+          onCancel={() => setShowJobUpload(false)}
+        />
+      </div>
+    );
+  }
+
   // Render start screen
   if (activeTab === 'start') {
     return (
@@ -379,20 +474,57 @@ const MockInterview = () => {
           })}
         </div>
 
-        {/* Start Button */}
-        <div className="text-center">
-          <button
-            onClick={startInterview}
-            disabled={isLoading}
-            className="btn-primary text-lg px-8 py-3 flex items-center mx-auto"
-          >
-            {isLoading ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-            ) : (
-              <Play className="h-5 w-5 mr-2" />
-            )}
-            Start {String(interviewModes.find(m => m.id === interviewMode)?.title || 'Interview')}
-          </button>
+        {/* Interview Options */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Generic Interview */}
+          <div className="card text-center">
+            <div className="flex items-center justify-center w-16 h-16 bg-secondary-100 rounded-full mx-auto mb-4">
+              <Play className="h-8 w-8 text-secondary-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-secondary-900 mb-2">
+              Generic Practice
+            </h3>
+            <p className="text-secondary-600 mb-4">
+              Practice with general questions for your skill level
+            </p>
+            <button
+              onClick={startInterview}
+              disabled={isLoading}
+              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-2" />
+                  Start Generic Interview
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Job-Specific Interview */}
+          <div className="card text-center">
+            <div className="flex items-center justify-center w-16 h-16 bg-primary-100 rounded-full mx-auto mb-4">
+              <Briefcase className="h-8 w-8 text-primary-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-secondary-900 mb-2">
+              Job-Specific Practice
+            </h3>
+            <p className="text-secondary-600 mb-4">
+              Upload a job description for tailored interview questions
+            </p>
+            <button
+              onClick={() => setShowJobUpload(true)}
+              className="btn-primary w-full"
+            >
+              <Briefcase className="h-4 w-4 mr-2" />
+              Upload Job Description
+            </button>
+          </div>
         </div>
 
         {/* Quick Stats */}
@@ -462,6 +594,18 @@ const MockInterview = () => {
                 <p className="text-sm text-secondary-600">
                   Session ID: {String(sessionData?.id || 'Loading...')}
                 </p>
+                {/* Job Context Display */}
+                {jobData && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-primary-600" />
+                    <span className="text-sm text-primary-600 font-medium">
+                      {jobData.jobTitle} at {jobData.company || 'Company'}
+                    </span>
+                    <span className="text-xs text-secondary-500">
+                      ({jobData.totalQuestions || 5} questions)
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
             

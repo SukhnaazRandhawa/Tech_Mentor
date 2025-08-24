@@ -859,10 +859,10 @@ app.post('/api/mock-interview/start', async (req, res) => {
     });
     
     // Generate feedback using AI
-    const currentQuestion = session.questions[session.currentQuestionIndex] || currentQuestion;
+    const currentQuestionData = session.questions[session.currentQuestionIndex] || null;
     const jobContext = session.jobAnalysis ? `Role requiring ${session.jobAnalysis.requiredSkills.join(', ')}` : 'General technical role';
     
-    const feedback = await generateInterviewFeedback(answer, mode, session.userLevel, currentQuestion, jobContext);
+    const feedback = await generateInterviewFeedback(answer, mode, session.userLevel, currentQuestionData, jobContext);
     
     // Store score and detailed feedback
     session.scores.push(feedback.score);
@@ -911,6 +911,48 @@ app.post('/api/mock-interview/start', async (req, res) => {
     console.error('Error submitting answer:', error);
     res.status(500).json({ 
       message: 'Failed to submit answer',
+      error: error.message 
+    });
+  }
+});
+
+// Analyze job description and generate interview questions
+app.post('/api/mock-interview/analyze-job', async (req, res) => {
+  try {
+    const { jobTitle, company, jobDescription } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    if (!jobDescription || !jobTitle) {
+      return res.status(400).json({ message: 'Job description and title are required' });
+    }
+    
+    console.log(`Analyzing job: ${jobTitle} at ${company || 'company'}`);
+    
+    // Use AI to analyze job and generate tailored questions
+    const aiResponse = await analyzeJobAndGenerateQuestions(jobDescription, 'technical', 'intermediate');
+    
+    // Enhance the response with job metadata
+    const enhancedResponse = {
+      ...aiResponse,
+      jobMetadata: {
+        title: jobTitle,
+        company: company || 'Company',
+        analyzedAt: new Date().toISOString(),
+        descriptionLength: jobDescription.length
+      }
+    };
+    
+    console.log(`Job analysis complete: ${aiResponse.interviewQuestions.length} questions generated`);
+    
+    res.json(enhancedResponse);
+    
+  } catch (error) {
+    console.error('Error analyzing job:', error);
+    res.status(500).json({ 
+      message: 'Failed to analyze job description',
       error: error.message 
     });
   }
