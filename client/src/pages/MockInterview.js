@@ -1,12 +1,10 @@
 import {
   BarChart3,
   BookOpen,
-  Brain,
   Briefcase,
   CheckCircle,
   ChevronLeft,
   Clock,
-  Code,
   MessageSquare,
   Play,
   Save,
@@ -49,8 +47,6 @@ const MockInterview = () => {
     };
   }, []);
   const [activeTab, setActiveTab] = useState('start');
-  const [interviewMode, setInterviewMode] = useState('technical');
-  const [isInterviewActive, setIsInterviewActive] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [userAnswer, setUserAnswer] = useState('');
   const [interviewHistory, setInterviewHistory] = useState([]);
@@ -65,34 +61,6 @@ const MockInterview = () => {
   
   const chatEndRef = useRef(null);
   const [conversation, setConversation] = useState([]);
-
-  // Interview modes configuration
-  const interviewModes = [
-    {
-      id: 'technical',
-      title: 'Technical Interview',
-      description: 'Coding challenges, algorithms, and technical problem-solving',
-      icon: Code,
-      color: 'bg-blue-500',
-      duration: '45-60 minutes'
-    },
-    {
-      id: 'system-design',
-      title: 'System Design',
-      description: 'Architecture discussions, scalability, and system planning',
-      icon: Brain,
-      color: 'bg-purple-500',
-      duration: '30-45 minutes'
-    },
-    {
-      id: 'behavioral',
-      title: 'Behavioral Interview',
-      description: 'Leadership, teamwork, and past experience discussions',
-      icon: MessageSquare,
-      color: 'bg-green-500',
-      duration: '30-40 minutes'
-    }
-  ];
 
   // Load interview history on component mount
   useEffect(() => {
@@ -143,7 +111,6 @@ const MockInterview = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          mode: interviewMode,
           userLevel: 'intermediate' // TODO: Get from user profile
         }),
       });
@@ -155,7 +122,6 @@ const MockInterview = () => {
         console.log('Welcome message value:', data.welcomeMessage);
         
         setSessionData(data.session);
-        setIsInterviewActive(true);
         setActiveTab('interview');
         
         // Add welcome message - ensure it's a string
@@ -214,8 +180,7 @@ const MockInterview = () => {
         body: JSON.stringify({
           sessionId: sessionData.id,
           questionId: currentQuestion?.id,
-          answer: userMessage.message,
-          mode: interviewMode
+          answer: userMessage.message
         }),
       });
 
@@ -246,7 +211,6 @@ const MockInterview = () => {
           // Interview is complete
           setActiveTab('feedback');
           setFeedback(data.finalFeedback);
-          setIsInterviewActive(false);
           
           // Reload history and stats
           loadInterviewHistory();
@@ -283,7 +247,6 @@ const MockInterview = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          mode: interviewMode,
           userLevel: 'intermediate',
           jobDescription: jobInfo.jobDescription,
           jobTitle: jobInfo.jobTitle,
@@ -296,7 +259,6 @@ const MockInterview = () => {
         console.log('Job-specific interview started:', data);
         
         setSessionData(data.session);
-        setIsInterviewActive(true);
         
         // Add welcome message
         const welcomeMessage = {
@@ -350,7 +312,6 @@ const MockInterview = () => {
         const data = await response.json();
         setFeedback(data.feedback);
         setActiveTab('feedback');
-        setIsInterviewActive(false);
         
         // Reload history and stats
         loadInterviewHistory();
@@ -373,8 +334,7 @@ const MockInterview = () => {
         },
         body: JSON.stringify({
           sessionId: sessionData.id,
-          feedback: feedback,
-          mode: interviewMode
+          feedback: feedback
         }),
       });
 
@@ -388,17 +348,7 @@ const MockInterview = () => {
     }
   };
 
-  // Get interview mode icon
-  const getModeIcon = (modeId) => {
-    const mode = interviewModes.find(m => m.id === modeId);
-    return mode ? mode.icon : MessageSquare;
-  };
 
-  // Get interview mode color
-  const getModeColor = (modeId) => {
-    const mode = interviewModes.find(m => m.id === modeId);
-    return mode ? mode.color : 'bg-gray-500';
-  };
 
   // Format interview duration
   const formatDuration = (minutes) => {
@@ -437,92 +387,31 @@ const MockInterview = () => {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-secondary-900 mb-4">
-            Mock Interview Preparation
+            AI-Powered Job Interview Practice
           </h1>
           <p className="text-secondary-600 text-lg">
-            Practice technical interviews with AI and get personalized feedback
+            Upload a job description and get personalized interview questions tailored to the specific role
           </p>
         </div>
 
-        {/* Interview Mode Selection */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {interviewModes.map((mode) => {
-            const Icon = mode.icon;
-            return (
-              <div
-                key={mode.id}
-                className={`card cursor-pointer transition-all duration-200 hover:shadow-lg ${
-                  interviewMode === mode.id ? 'ring-2 ring-primary-500' : ''
-                }`}
-                onClick={() => setInterviewMode(mode.id)}
-              >
-                <div className={`${mode.color} w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4`}>
-                  <Icon className="h-8 w-8 text-white" />
-                </div>
-                <h3 className="text-xl font-semibold text-secondary-900 mb-2">
-                  {mode.title}
-                </h3>
-                <p className="text-secondary-600 mb-3">
-                  {mode.description}
-                </p>
-                <div className="flex items-center justify-center text-sm text-secondary-500">
-                  <Clock className="h-4 w-4 mr-1" />
-                  {mode.duration}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Interview Options */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Generic Interview */}
+        {/* Main Job Upload Option */}
+        <div className="max-w-2xl mx-auto mb-8">
           <div className="card text-center">
-            <div className="flex items-center justify-center w-16 h-16 bg-secondary-100 rounded-full mx-auto mb-4">
-              <Play className="h-8 w-8 text-secondary-600" />
+            <div className="flex items-center justify-center w-20 h-20 bg-primary-100 rounded-full mx-auto mb-6">
+              <Briefcase className="h-10 w-10 text-primary-600" />
             </div>
-            <h3 className="text-xl font-semibold text-secondary-900 mb-2">
-              Generic Practice
-            </h3>
-            <p className="text-secondary-600 mb-4">
-              Practice with general questions for your skill level
-            </p>
-            <button
-              onClick={startInterview}
-              disabled={isLoading}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Starting...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  Start Generic Interview
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Job-Specific Interview */}
-          <div className="card text-center">
-            <div className="flex items-center justify-center w-16 h-16 bg-primary-100 rounded-full mx-auto mb-4">
-              <Briefcase className="h-8 w-8 text-primary-600" />
-            </div>
-            <h3 className="text-xl font-semibold text-secondary-900 mb-2">
-              Job-Specific Practice
-            </h3>
-            <p className="text-secondary-600 mb-4">
-              Upload a job description for tailored interview questions
+            <h2 className="text-2xl font-semibold text-secondary-900 mb-3">
+              Start Job-Specific Interview
+            </h2>
+            <p className="text-secondary-600 mb-6 text-lg">
+              Our AI analyzes job descriptions and generates 12-15 tailored questions covering technical skills, behavioral scenarios, and role-specific challenges.
             </p>
             <button
               onClick={() => setShowJobUpload(true)}
-              className="btn-primary w-full"
+              className="btn-primary text-lg px-8 py-4"
             >
-              <Briefcase className="h-4 w-4 mr-2" />
-              Upload Job Description
+              <Briefcase className="h-5 w-5 mr-2" />
+              Upload Job Description & Start Interview
             </button>
           </div>
         </div>
@@ -589,7 +478,7 @@ const MockInterview = () => {
               </button>
               <div>
                 <h1 className="text-xl font-semibold text-secondary-900">
-                  {String(interviewModes.find(m => m.id === interviewMode)?.title || 'Interview')}
+                  AI-Powered Interview
                 </h1>
                 <p className="text-sm text-secondary-600">
                   Session ID: {String(sessionData?.id || 'Loading...')}
@@ -602,7 +491,7 @@ const MockInterview = () => {
                       {jobData.jobTitle} at {jobData.company || 'Company'}
                     </span>
                     <span className="text-xs text-secondary-500">
-                      ({jobData.totalQuestions || 5} questions)
+                      ({jobData.totalQuestions || 15} questions)
                     </span>
                   </div>
                 )}

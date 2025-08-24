@@ -19,9 +19,6 @@ export const AuthProvider = ({ children }) => {
 
   // Set up axios defaults and interceptors
   useEffect(() => {
-    // Set base URL to backend server (bypass proxy if needed)
-    axios.defaults.baseURL = 'http://localhost:5001';
-    
     // Add request interceptor for debugging
     const requestInterceptor = axios.interceptors.request.use(
       (config) => {
