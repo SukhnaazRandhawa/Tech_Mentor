@@ -828,7 +828,7 @@ app.post('/api/mock-interview/start', async (req, res) => {
     // Submit answer and get feedback
     app.post('/api/mock-interview/submit-answer', async (req, res) => {
       try {
-        const { sessionId, questionId, answer, mode } = req.body;
+        const { sessionId, questionId, answer } = req.body;
         
         if (!currentUserEmail) {
           return res.status(401).json({ message: 'Not authenticated' });
@@ -947,7 +947,7 @@ app.post('/api/mock-interview/analyze-job', async (req, res) => {
     console.log(`Analyzing job: ${jobTitle} at ${company || 'company'}`);
     
     // Use AI to analyze job and generate tailored questions
-    const aiResponse = await analyzeJobAndGenerateQuestions(jobDescription, 'technical', 'intermediate');
+    const aiResponse = await analyzeJobAndGenerateQuestions(jobDescription, 'intermediate');
     
     // Enhance the response with job metadata
     const enhancedResponse = {
@@ -1085,9 +1085,9 @@ app.post('/api/mock-interview/end', async (req, res) => {
     session.duration = Math.round((session.endTime - session.startTime) / 1000 / 60);
     
     // Generate final feedback
-    const finalFeedback = await generateFinalFeedback(session, session.mode);
+    const finalFeedback = await generateFinalFeedback(session);
     
-    console.log(`Mock interview ended early: ${session.mode} for ${user.name}`);
+    console.log(`Mock interview ended early for ${user.name}`);
     
     res.json({
       message: 'Interview ended successfully',
@@ -1106,7 +1106,7 @@ app.post('/api/mock-interview/end', async (req, res) => {
 // Save interview feedback
 app.post('/api/mock-interview/save', async (req, res) => {
   try {
-    const { sessionId, feedback, mode } = req.body;
+    const { sessionId, feedback } = req.body;
     
     if (!currentUserEmail) {
       return res.status(401).json({ message: 'Not authenticated' });
@@ -1130,7 +1130,7 @@ app.post('/api/mock-interview/save', async (req, res) => {
     session.feedback = feedback;
     session.saved = true;
     
-    console.log(`Mock interview feedback saved: ${mode} for ${user.name}`);
+    console.log(`Mock interview feedback saved for ${user.name}`);
     
     res.json({
       message: 'Interview feedback saved successfully',
@@ -1204,15 +1204,16 @@ app.get('/api/mock-interview/stats', async (req, res) => {
         : 0,
       questionsAnswered: interviews.reduce((sum, i) => sum + (i.answers?.length || 0), 0),
       totalTime: interviews.reduce((sum, i) => sum + (i.duration || 0), 0),
-      modeBreakdown: {}
+      interviewTypes: {}
     };
     
-    // Calculate mode breakdown
+    // Calculate interview type breakdown (job-specific vs generic)
     interviews.forEach(interview => {
-      if (!stats.modeBreakdown[interview.mode]) {
-        stats.modeBreakdown[interview.mode] = 0;
+      const type = interview.jobDescription ? 'job-specific' : 'generic';
+      if (!stats.interviewTypes[type]) {
+        stats.interviewTypes[type] = 0;
       }
-      stats.modeBreakdown[interview.mode]++;
+      stats.interviewTypes[type]++;
     });
     
     res.json({
@@ -1278,7 +1279,6 @@ Be encouraging but honest. Focus on helping the candidate improve and understand
 
 QUESTION: ${question?.title || 'Interview question'}
 QUESTION DESCRIPTION: ${question?.description || 'Question details'}
-INTERVIEW MODE: ${mode}
 CANDIDATE LEVEL: ${userLevel}
 JOB CONTEXT: ${jobContext || 'General technical role'}
 
@@ -1442,7 +1442,6 @@ IMPORTANT: Generate 12-15 questions minimum. Mix question types naturally based 
 JOB DESCRIPTION:
 ${jobDescription}
 
-INTERVIEW MODE: ${mode}
 CANDIDATE LEVEL: ${userLevel}
 
 Generate questions that will help determine if this candidate is a good fit for this specific role.`;
@@ -1466,12 +1465,12 @@ Generate questions that will help determine if this candidate is a good fit for 
     } catch (parseError) {
       console.error('Failed to parse OpenAI response:', parseError);
       console.log('Raw response:', content);
-      return generateFallbackInterviewQuestions(mode, userLevel);
+      return generateFallbackInterviewQuestions(userLevel);
     }
 
   } catch (error) {
     console.error('Error in AI job analysis:', error);
-    return generateFallbackInterviewQuestions(mode, userLevel);
+    return generateFallbackInterviewQuestions(userLevel);
   }
 }
 

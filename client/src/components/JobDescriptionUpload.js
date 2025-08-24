@@ -55,11 +55,27 @@ const JobDescriptionUpload = ({ onJobAnalyzed, onCancel }) => {
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setJobDescription(e.target.result);
-      };
-      reader.readAsText(file);
+      // Check file type
+      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+        // Handle text files
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setJobDescription(e.target.result);
+        };
+        reader.readAsText(file);
+      } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        // For PDFs, show a message to copy-paste content
+        setError('PDF files cannot be read directly. Please copy and paste the job description text instead.');
+        setJobDescription('');
+      } else if (file.type.includes('word') || file.name.endsWith('.doc') || file.name.endsWith('.docx')) {
+        // For Word documents, show a message to copy-paste content
+        setError('Word documents cannot be read directly. Please copy and paste the job description text instead.');
+        setJobDescription('');
+      } else {
+        // For other file types
+        setError('Unsupported file type. Please use .txt files or copy-paste the content.');
+        setJobDescription('');
+      }
     }
   };
 
@@ -264,7 +280,7 @@ const JobDescriptionUpload = ({ onJobAnalyzed, onCancel }) => {
                   <span className="text-primary-600 font-medium">Click to upload</span> a job description file
                 </p>
                 <p className="text-xs text-secondary-500 mt-1">
-                  Supports .txt, .doc, .pdf files
+                  Best with .txt files • For PDF/DOC, copy-paste the content
                 </p>
               </div>
             </label>
