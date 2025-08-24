@@ -6,15 +6,15 @@ import {
   ChevronLeft,
   Clock,
   MessageSquare,
-  Play,
-  Save,
   Square,
   Target,
   TrendingUp
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import EnhancedInterviewFeedback from '../components/EnhancedInterviewFeedback';
 import JobDescriptionUpload from '../components/JobDescriptionUpload';
+import VoiceInterview from '../components/VoiceInterview';
 import { useAuth } from '../contexts/AuthContext';
 
 const MockInterview = () => {
@@ -57,7 +57,10 @@ const MockInterview = () => {
   
   // Job-specific interview state
   const [showJobUpload, setShowJobUpload] = useState(false);
-  const [jobData, setJobData] = useState(null);
+  const [jobData, setJobData] = useState(false);
+  
+  // Interview mode state
+  const [useVoiceInterface, setUseVoiceInterface] = useState(true);
   
   const chatEndRef = useRef(null);
   const [conversation, setConversation] = useState([]);
@@ -394,25 +397,90 @@ const MockInterview = () => {
           </p>
         </div>
 
-        {/* Main Job Upload Option */}
-        <div className="max-w-2xl mx-auto mb-8">
-          <div className="card text-center">
-            <div className="flex items-center justify-center w-20 h-20 bg-primary-100 rounded-full mx-auto mb-6">
-              <Briefcase className="h-10 w-10 text-primary-600" />
+        {/* Interview Mode Selection */}
+        <div className="max-w-4xl mx-auto mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Voice-Enabled Interview */}
+            <div className="card text-center">
+              <div className="flex items-center justify-center w-20 h-20 bg-primary-100 rounded-full mx-auto mb-6">
+                <MessageSquare className="h-10 w-10 text-primary-600" />
+              </div>
+              <h2 className="text-2xl font-semibold text-secondary-900 mb-3">
+                🎤 Voice-Enabled Interview
+              </h2>
+              <p className="text-secondary-600 mb-6 text-lg">
+                <strong>Real Interview Experience:</strong> AI speaks questions, you answer by voice, camera enabled, code editor for technical challenges.
+              </p>
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center justify-center space-x-2 text-sm text-secondary-600">
+                  <MessageSquare className="h-4 w-4 text-green-500" />
+                  <span>AI speaks questions naturally</span>
+                </div>
+                <div className="flex items-center justify-center space-x-2 text-sm text-secondary-600">
+                  <MessageSquare className="h-4 w-4 text-green-500" />
+                  <span>Voice recognition for answers</span>
+                </div>
+                <div className="flex items-center justify-center space-x-2 text-sm text-secondary-600">
+                  <MessageSquare className="h-4 w-4 text-green-500" />
+                  <span>Camera for confidence building</span>
+                </div>
+                <div className="flex items-center justify-center space-x-2 text-sm text-secondary-600">
+                  <MessageSquare className="h-4 w-4 text-green-500" />
+                  <span>Code editor for technical questions</span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setUseVoiceInterface(true);
+                  setShowJobUpload(true);
+                }}
+                className="btn-primary text-lg px-8 py-4 w-full"
+              >
+                <MessageSquare className="h-5 w-5 mr-2" />
+                Start Voice Interview
+              </button>
             </div>
-            <h2 className="text-2xl font-semibold text-secondary-900 mb-3">
-              Start Job-Specific Interview
-            </h2>
-            <p className="text-secondary-600 mb-6 text-lg">
-              Our AI analyzes job descriptions and generates 12-15 tailored questions covering technical skills, behavioral scenarios, and role-specific challenges.
-            </p>
-            <button
-              onClick={() => setShowJobUpload(true)}
-              className="btn-primary text-lg px-8 py-4"
-            >
-              <Briefcase className="h-5 w-5 mr-2" />
-              Upload Job Description & Start Interview
-            </button>
+
+            {/* Traditional Text Interview */}
+            <div className="card text-center">
+              <div className="flex items-center justify-center w-20 h-20 bg-secondary-100 rounded-full mx-auto mb-6">
+                <Briefcase className="h-10 w-10 text-secondary-600" />
+              </div>
+              <h2 className="text-2xl font-semibold text-secondary-900 mb-3">
+                📝 Traditional Interview
+              </h2>
+              <p className="text-secondary-600 mb-6 text-lg">
+                <strong>Text-Based:</strong> Type your answers, no voice or camera required. Good for practice and review.
+              </p>
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center justify-center space-x-2 text-sm text-secondary-600">
+                  <MessageSquare className="h-4 w-4 text-blue-500" />
+                  <span>Type answers in text</span>
+                </div>
+                <div className="flex items-center justify-center space-x-2 text-sm text-secondary-600">
+                  <MessageSquare className="h-4 w-4 text-blue-500" />
+                  <span>No voice or camera needed</span>
+                </div>
+                <div className="flex items-center justify-center space-x-2 text-sm text-secondary-600">
+                  <MessageSquare className="h-4 w-4 text-blue-500" />
+                  <span>Good for practice</span>
+                </div>
+                <div className="flex items-center justify-center space-x-2 text-sm text-secondary-600">
+                  <MessageSquare className="h-4 w-4 text-blue-500" />
+                  <span>Code editor available</span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setUseVoiceInterface(false);
+                  setShowJobUpload(true);
+                }}
+                className="btn-secondary text-lg px-8 py-4 w-full"
+              >
+                <Briefcase className="h-5 w-5 mr-2" />
+                Start Text Interview
+              </button>
+            </div>
           </div>
         </div>
 
@@ -464,6 +532,20 @@ const MockInterview = () => {
 
   // Render active interview
   if (activeTab === 'interview') {
+    // Use voice interface if selected
+    if (useVoiceInterface) {
+      return (
+        <VoiceInterview
+          currentQuestion={currentQuestion}
+          onAnswerSubmit={submitAnswer}
+          onInterviewEnd={endInterview}
+          jobData={jobData}
+          sessionData={sessionData}
+        />
+      );
+    }
+    
+    // Traditional text interface
     return (
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Interview Header */}
@@ -635,92 +717,13 @@ const MockInterview = () => {
   // Render feedback screen
   if (activeTab === 'feedback') {
     return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-secondary-900 mb-4">
-            Interview Complete!
-          </h1>
-          <p className="text-secondary-600 text-lg">
-            Here's your performance analysis and feedback
-          </p>
-        </div>
-
-        {feedback && (
-          <div className="space-y-6">
-            {/* Overall Score */}
-            <div className="card text-center">
-              <h2 className="text-xl font-semibold text-secondary-900 mb-4">
-                Overall Performance
-              </h2>
-              <div className="text-6xl font-bold text-primary-600 mb-2">
-                {String(feedback?.overallScore || 0)}/10
-              </div>
-              <p className="text-secondary-600">
-                {(feedback?.overallScore || 0) >= 8 ? 'Excellent!' :
-                 (feedback?.overallScore || 0) >= 6 ? 'Good job!' :
-                 (feedback?.overallScore || 0) >= 4 ? 'Keep practicing!' :
-                 'More practice needed'}
-              </p>
-            </div>
-
-            {/* Detailed Feedback */}
-            <div className="card">
-              <h2 className="text-xl font-semibold text-secondary-900 mb-4">
-                Detailed Feedback
-              </h2>
-              <div className="space-y-4">
-                {feedback?.categories && Array.isArray(feedback.categories) && feedback.categories.map((category, idx) => (
-                  <div key={idx} className="border-b border-secondary-200 pb-4 last:border-b-0">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-medium text-secondary-900">
-                        {String(category?.name || 'Category')}
-                      </h3>
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        (category?.score || 0) >= 8 ? 'bg-green-100 text-green-800' :
-                        (category?.score || 0) >= 6 ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {String(category?.score || 0)}/10
-                      </span>
-                    </div>
-                    <p className="text-sm text-secondary-600 mb-2">
-                      {String(category?.feedback || 'No feedback available')}
-                    </p>
-                    {category?.suggestions && Array.isArray(category.suggestions) && (
-                      <ul className="text-sm text-secondary-600 space-y-1">
-                        {category.suggestions.map((suggestion, sIdx) => (
-                          <li key={sIdx} className="flex items-start">
-                            <span className="text-primary-600 mr-2">•</span>
-                            {String(suggestion || '')}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={() => setActiveTab('start')}
-                className="btn-secondary px-6 py-3"
-              >
-                <Play className="h-5 w-5 mr-2" />
-                Practice Again
-              </button>
-              <button
-                onClick={saveInterview}
-                className="btn-primary px-6 py-3"
-              >
-                <Save className="h-5 w-5 mr-2" />
-                Save & Go to Dashboard
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      <EnhancedInterviewFeedback
+        feedback={feedback}
+        onPracticeAgain={() => setActiveTab('start')}
+        onGoToDashboard={saveInterview}
+        jobData={jobData}
+        sessionData={sessionData}
+      />
     );
   }
 

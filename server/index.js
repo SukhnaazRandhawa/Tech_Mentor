@@ -1229,6 +1229,156 @@ app.get('/api/mock-interview/stats', async (req, res) => {
   }
 });
 
+// Analyze hiring probability using OpenAI
+app.post('/api/mock-interview/analyze-hiring-probability', async (req, res) => {
+  try {
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    const { feedback, jobData, scores } = req.body;
+    
+    if (!feedback) {
+      return res.status(400).json({ message: 'Feedback data is required' });
+    }
+    
+    // Use OpenAI to analyze hiring probability
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const systemPrompt = `You are an expert HR professional and technical recruiter. Your task is to analyze interview performance and provide realistic hiring probability assessment.
+
+ANALYZE the candidate's performance based on:
+- Overall score and category scores
+- Technical knowledge demonstrated
+- Problem-solving approach
+- Communication skills
+- Job requirements alignment
+
+PROVIDE:
+1. Hiring probability percentage (realistic, not inflated)
+2. Detailed analysis of strengths and weaknesses
+3. Specific improvement recommendations
+4. Timeline for job readiness
+5. Confidence level in assessment
+
+FORMAT response as JSON:
+{
+  "hiringProbability": 65,
+  "detailedAnalysis": {
+    "status": "Good",
+    "message": "Realistic assessment message",
+    "strengths": ["strength1", "strength2"],
+    "improvements": ["improvement1", "improvement2"],
+    "timeline": "2-4 weeks of preparation needed",
+    "confidence": "High"
+  }
+}
+
+Be brutally honest about hiring chances. Don't inflate numbers.`;
+
+        const userPrompt = `Please analyze this interview performance for hiring probability:
+
+JOB DATA: ${JSON.stringify(jobData || {})}
+OVERALL SCORE: ${scores || 7}/10
+FEEDBACK: ${JSON.stringify(feedback)}
+
+Provide realistic hiring probability and detailed analysis.`;
+
+        const response = await openai.chat.completions.create({
+          model: "gpt-4",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 1500
+        });
+
+        const content = response.choices[0].message.content;
+        
+        try {
+          const parsedResponse = JSON.parse(content);
+          res.json(parsedResponse);
+        } catch (parseError) {
+          console.error('Failed to parse OpenAI response:', parseError);
+          // Fallback to basic analysis
+          generateFallbackHiringAnalysis(feedback, scores, res);
+        }
+        
+      } catch (openaiError) {
+        console.error('OpenAI error:', openaiError);
+        // Fallback to basic analysis
+        generateFallbackHiringAnalysis(feedback, scores, res);
+      }
+    } else {
+      // Fallback to basic analysis
+      generateFallbackHiringAnalysis(feedback, scores, res);
+    }
+    
+  } catch (error) {
+    console.error('Error analyzing hiring probability:', error);
+    res.status(500).json({ 
+      message: 'Failed to analyze hiring probability',
+      error: error.message 
+    });
+  }
+});
+
+// Fallback function for hiring probability analysis
+function generateFallbackHiringAnalysis(feedback, scores, res) {
+  const overallScore = scores || 7;
+  
+  let probability = 0;
+  let analysis = {};
+  
+  if (overallScore >= 9) {
+    probability = 85;
+    analysis = {
+      status: 'Excellent',
+      message: 'You have a very high chance of getting hired. Your performance demonstrates exceptional skills.',
+      strengths: ['Strong technical foundation', 'Excellent communication', 'Outstanding problem-solving'],
+      improvements: ['Continue refining advanced concepts', 'Maintain current performance level'],
+      timeline: 'Immediate hiring potential',
+      confidence: 'Very High'
+    };
+  } else if (overallScore >= 7) {
+    probability = 65;
+    analysis = {
+      status: 'Good',
+      message: 'You have a good chance of getting hired with some preparation.',
+      strengths: ['Solid technical skills', 'Good communication', 'Reasonable problem-solving'],
+      improvements: ['Work on advanced topics', 'Improve time management', 'Practice more complex scenarios'],
+      timeline: '2-4 weeks of preparation needed',
+      confidence: 'High'
+    };
+  } else if (overallScore >= 5) {
+    probability = 40;
+    analysis = {
+      status: 'Fair',
+      message: 'You have potential but need significant improvement before applying.',
+      strengths: ['Basic understanding', 'Some communication skills'],
+      improvements: ['Strengthen fundamentals', 'Practice extensively', 'Improve communication'],
+      timeline: '2-3 months of preparation needed',
+      confidence: 'Medium'
+    };
+  } else {
+    probability = 15;
+    analysis = {
+      status: 'Needs Work',
+      message: 'Significant improvement needed before considering job applications.',
+      strengths: ['Willingness to learn', 'Basic concepts'],
+      improvements: ['Build strong foundation', 'Extensive practice', 'Professional development'],
+      timeline: '4-6 months of preparation needed',
+      confidence: 'Low'
+    };
+  }
+  
+  res.json({
+    hiringProbability: probability,
+    detailedAnalysis: analysis
+  });
+}
+
 // Helper functions for mock interviews
 
 async function generateInterviewFeedback(answer, userLevel, question, jobContext) {
