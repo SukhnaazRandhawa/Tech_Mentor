@@ -28,6 +28,11 @@ const VoiceInterview = ({
   const [speechText, setSpeechText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   
+  // ✨ NEW: Interview phase state
+  const [interviewPhase, setInterviewPhase] = useState('greeting'); // greeting, questioning, complete
+  const [isWaitingForUserResponse, setIsWaitingForUserResponse] = useState(false);
+  
+  const hasGreetingBeenSpokenRef = useRef(false);
   // Refs
   const webcamRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -175,19 +180,24 @@ const VoiceInterview = ({
     }
   }, [isListening, sessionData?.id]);
   
-  // Stop listening and process answer
+  // ✨ NEW: Modified stopListening to handle greeting response
   const stopListening = useCallback(() => {
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
       setIsProcessing(true);
       
-      // Process the final transcript via WebSocket
       if (transcript.trim()) {
-        processAnswerViaWebSocket(transcript);
+        if (interviewPhase === 'greeting') {
+          // Handle greeting response
+          handleGreetingResponse(transcript);
+        } else {
+          // Handle question response (existing logic)
+          processAnswerViaWebSocket(transcript);
+        }
       }
     }
-  }, [isListening, transcript, sessionData?.id]);
+  }, [isListening, transcript, interviewPhase, sessionData?.id]);
   
   // Process user's answer via WebSocket for real-time communication
   const processAnswerViaWebSocket = (answer) => {
@@ -225,6 +235,46 @@ const VoiceInterview = ({
     }
   };
   
+  // ✨ NEW: Handle greeting response
+  const handleGreetingResponse = (response) => {
+    const lowerResponse = response.toLowerCase();
+    
+    // Check if user is ready to start
+    if (lowerResponse.includes('yes') || lowerResponse.includes('ready') || 
+        lowerResponse.includes('let\'s start') || lowerResponse.includes('begin')) {
+      
+      // User is ready - emit greeting complete event
+      if (socketRef.current && sessionData?.id) {
+        socketRef.current.emit('interview:greeting-complete', {
+          sessionId: sessionData.id,
+          userResponse: response,
+          readyToStart: true
+        });
+      }
+      
+      speakText("Great! Let's begin with the first question.");
+      
+      // Move to questioning phase
+      setTimeout(() => {
+        setInterviewPhase('questioning');
+        setIsWaitingForUserResponse(false);
+        
+        // Set the first question
+        if (jobData?.questions && jobData.questions.length > 0) {
+          onAnswerSubmit && onAnswerSubmit(jobData.questions[0]);
+        }
+        
+        setIsProcessing(false);
+      }, 2000); // Wait for AI to finish speaking
+      
+    } else {
+      // User might need clarification
+      const clarification = "No problem! Take your time. Just let me know when you're ready to start the interview by saying 'I'm ready' or 'let's begin'.";
+      speakText(clarification);
+      setIsProcessing(false);
+    }
+  };
+
   // Fallback HTTP-based answer processing
   const processAnswer = async (answer) => {
     try {
@@ -275,18 +325,51 @@ const VoiceInterview = ({
     }
   };
   
+  //const hasGreetingBeenSpokenRef = useRef(false);
+  // ✨ NEW: Add greeting function
+  const startInterviewGreeting = () => {
+
+    if (hasGreetingBeenSpokenRef.current) {
+      console.log('Greeting already spoken, skipping...');
+      return;
+    }
+    
+    const jobTitle = jobData?.jobTitle || 'this technical role';
+    const company = jobData?.company || 'the company';
+    const totalQuestions = jobData?.totalQuestions || 15;
+    
+    const greeting = `Hello! Welcome to your interview for ${jobTitle} at ${company}. 
+      I'm your AI interviewer today. I've analyzed the job description and prepared ${totalQuestions} tailored questions 
+      covering technical skills, problem-solving, and behavioral scenarios. 
+      This interview should take about 45 minutes. 
+      
+      Are you ready to begin? Please let me know when you're ready to start with the first question.`;
+    
+    speakText(greeting);
+    setIsWaitingForUserResponse(true);
+    hasGreetingBeenSpokenRef.current = true;
+  };
+
   // Speak the current question
   const speakQuestion = (question) => {
     const questionText = `${question.title}. ${question.description}`;
     speakText(questionText);
   };
   
-  // Speak current question on mount
-  useEffect(() => {
-    if (currentQuestion) {
-      speakQuestion(currentQuestion);
-    }
-  }, [currentQuestion]);
+  // ✨ NEW: Modified useEffect to handle interview phases
+  //const [hasGreetingBeenSpoken, setHasGreetingBeenSpoken] = useState(false);
+
+useEffect(() => {
+  if (interviewPhase === 'greeting') {
+    startInterviewGreeting();
+    //setHasGreetingBeenSpoken(true); // ✅ Prevent double greeting
+  } else if (interviewPhase === 'questioning' && currentQuestion) {
+    speakQuestion(currentQuestion);
+  }
+}, [interviewPhase, currentQuestion]);
+  
+  // ✨ NEW: Update interview phase when jobData changes (from parent)
+  
   
   // Toggle camera
   const toggleCamera = () => {
@@ -352,6 +435,16 @@ const VoiceInterview = ({
               <div className="flex items-center space-x-2 text-sm text-gray-300">
                 <span>🎯 {jobData.jobTitle} at {jobData.company || 'Company'}</span>
                 <span>• {jobData.totalQuestions || 15} questions</span>
+                <span>•</span>
+                <span className={`px-2 py-1 rounded-full text-xs ${
+                  interviewPhase === 'greeting' ? 'bg-blue-600 text-white' :
+                  interviewPhase === 'questioning' ? 'bg-green-600 text-white' :
+                  'bg-gray-600 text-white'
+                }`}>
+                  {interviewPhase === 'greeting' ? 'Introduction Phase' : 
+                   interviewPhase === 'questioning' ? 'Questioning Phase' : 
+                   'Complete'}
+                </span>
               </div>
             )}
           </div>
@@ -412,6 +505,20 @@ const VoiceInterview = ({
                     <div className="flex items-center justify-center space-x-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                       <span className="font-medium">Processing your answer...</span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* ✨ NEW: Greeting Phase Indicator */}
+                {interviewPhase === 'greeting' && (
+                  <div className="bg-blue-600 text-white px-4 py-2 rounded-lg text-center">
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                      <span className="font-medium">
+                        {isWaitingForUserResponse ? 
+                          'Tell me when you\'re ready to start!' : 
+                          'AI is introducing the interview...'}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -591,7 +698,11 @@ const VoiceInterview = ({
         {/* Status Text */}
         <div className="text-center mt-3">
           <p className="text-sm text-gray-400">
-            {isListening ? 'Click the red button to stop recording' : 
+            {interviewPhase === 'greeting' ? (
+              isWaitingForUserResponse ? 
+                'Tell me when you\'re ready to start the interview' : 
+                'AI is introducing the interview...'
+            ) : isListening ? 'Click the red button to stop recording' : 
              isProcessing ? 'Processing your answer...' : 
              'Click the microphone to start answering'}
           </p>
