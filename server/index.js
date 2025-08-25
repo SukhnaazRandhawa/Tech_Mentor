@@ -117,14 +117,128 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
+  // Handle authentication
+  socket.on('authenticate', (data) => {
+    const { token } = data;
+    if (token === 'test-token-123') {
+      socket.authenticated = true;
+      socket.emit('authenticated', { status: 'success' });
+      console.log(`Socket ${socket.id} authenticated successfully`);
+    } else {
+      socket.emit('authentication_error', { message: 'Invalid token' });
+      console.log(`Socket ${socket.id} authentication failed`);
+    }
+  });
+  
   socket.on('join-tutoring-session', (sessionId) => {
+    if (!socket.authenticated) {
+      socket.emit('error', { message: 'Not authenticated' });
+      return;
+    }
     socket.join(`tutoring-${sessionId}`);
     console.log(`User ${socket.id} joined tutoring session ${sessionId}`);
   });
   
   socket.on('join-interview-session', (sessionId) => {
+    if (!socket.authenticated) {
+      socket.emit('error', { message: 'Not authenticated' });
+      return;
+    }
     socket.join(`interview-${sessionId}`);
     console.log(`User ${socket.id} joined interview session ${sessionId}`);
+  });
+  
+  // Handle real-time interview voice streaming
+  socket.on('interview:voice-chunk', async (data) => {
+    const { sessionId, audioChunk, questionId } = data;
+    
+    try {
+      // Process audio chunk in real-time
+      // This would integrate with a real-time speech-to-text service
+      console.log(`Processing voice chunk for session ${sessionId}, question ${questionId}`);
+      
+      // Emit processing status to client
+      socket.emit('interview:processing-status', {
+        status: 'processing',
+        message: 'Processing your answer...'
+      });
+      
+    } catch (error) {
+      console.error('Error processing voice chunk:', error);
+      socket.emit('interview:error', {
+        message: 'Error processing voice input'
+      });
+    }
+  });
+  
+  // Handle voice start
+  socket.on('interview:voice-start', (data) => {
+    const { sessionId } = data;
+    socket.to(`interview-${sessionId}`).emit('interview:user-speaking', {
+      status: 'speaking',
+      message: 'User is speaking...'
+    });
+  });
+  
+  // Handle voice end and process complete answer
+  socket.on('interview:voice-end', async (data) => {
+    const { sessionId, questionId, completeAnswer, code } = data;
+    const startTime = Date.now();
+    
+    console.log(`[WebSocket] Processing voice answer for session ${sessionId}, question ${questionId}`);
+    
+    try {
+      // Get user from session
+      if (!currentUserEmail) {
+        console.log(`[WebSocket] Authentication failed for session ${sessionId}`);
+        socket.emit('interview:error', { message: 'Not authenticated' });
+        return;
+      }
+      
+      const user = userDatabase.get(currentUserEmail);
+      if (!user) {
+        console.log(`[WebSocket] User not found for session ${sessionId}`);
+        socket.emit('interview:error', { message: 'User not found' });
+        return;
+      }
+      
+      // Find the interview session
+      const session = user.mockInterviews?.find(s => s.id === sessionId);
+      if (!session) {
+        console.log(`[WebSocket] Session not found: ${sessionId}`);
+        socket.emit('interview:error', { message: 'Interview session not found' });
+        return;
+      }
+      
+      console.log(`[WebSocket] Starting answer processing for session ${sessionId}`);
+      
+      // Process answer directly without HTTP fetch for better performance
+      const result = await processInterviewAnswerDirectly(session, questionId, completeAnswer, code, user);
+      
+      const processingTime = Date.now() - startTime;
+      console.log(`[WebSocket] Answer processed successfully in ${processingTime}ms for session ${sessionId}`);
+      
+      // Emit AI response to client
+      socket.emit('interview:ai-response', result);
+      
+      // Emit to other clients in the same interview session
+      socket.to(`interview-${sessionId}`).emit('interview:ai-response', result);
+      
+    } catch (error) {
+      const processingTime = Date.now() - startTime;
+      console.error(`[WebSocket] Error processing voice answer after ${processingTime}ms:`, error);
+      socket.emit('interview:error', {
+        message: 'Error processing answer'
+      });
+    }
+  });
+  
+  // Handle interview end
+  socket.on('interview:end', (data) => {
+    const { sessionId } = data;
+    socket.to(`interview-${sessionId}`).emit('interview:ended', {
+      message: 'Interview ended by user'
+    });
   });
   
   // Handle real-time chat messages
@@ -167,6 +281,77 @@ io.on('connection', (socket) => {
 // app.use('/api/job-prep', require('./routes/jobPrep'));
 // app.use('/api/interviews', require('./routes/interviews'));
 // app.use('/api/users', require('./routes/users'));
+
+// OpenAI Diagnostic Test Endpoint
+app.get('/api/test-openai', async (req, res) => {
+  console.log('=== OpenAI Test Endpoint Hit ===');
+  console.log('🔑 OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
+  console.log('🔢 OPENAI_API_KEY length:', process.env.OPENAI_API_KEY?.length || 0);
+  console.log('🎯 OPENAI_API_KEY starts with:', process.env.OPENAI_API_KEY?.substring(0, 15));
+  
+  try {
+    console.log('📡 Making OpenAI API test call...');
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: "Say 'Hello from OpenAI!' in exactly 3 words." }],
+      max_tokens: 10,
+      temperature: 0
+    });
+    
+    console.log('✅ OpenAI API call successful');
+    console.log('📝 Response:', response.choices[0].message.content);
+    
+    res.json({ 
+      success: true, 
+      message: response.choices[0].message.content,
+      model: "gpt-3.5-turbo",
+      keyLength: process.env.OPENAI_API_KEY?.length,
+      keyStart: process.env.OPENAI_API_KEY?.substring(0, 15)
+    });
+  } catch (error) {
+    console.error('❌ OpenAI API Error Details:');
+    console.error('Error message:', error.message);
+    console.error('Error type:', error.type);
+    console.error('Error code:', error.code);
+    console.error('Error status:', error.status);
+    console.error('Full error:', error);
+    
+    res.json({ 
+      success: false, 
+      error: error.message,
+      code: error.code,
+      type: error.type,
+      status: error.status,
+      keyExists: !!process.env.OPENAI_API_KEY,
+      keyLength: process.env.OPENAI_API_KEY?.length,
+      keyStart: process.env.OPENAI_API_KEY?.substring(0, 15)
+    });
+  }
+});
+
+// Test Interview Feedback Endpoint
+app.post('/api/test-interview-feedback', async (req, res) => {
+  console.log('=== Test Interview Feedback Endpoint Hit ===');
+  const { answer, userLevel, question, jobContext } = req.body;
+  
+  try {
+    console.log('🧪 Testing interview feedback generation...');
+    const feedback = await generateInterviewFeedback(answer, userLevel, question, jobContext);
+    
+    res.json({ 
+      success: true, 
+      feedback: feedback,
+      usedOpenAI: feedback.message !== 'Thank you for your answer. Here is my feedback.'
+    });
+  } catch (error) {
+    console.error('❌ Test interview feedback error:', error);
+    res.json({ 
+      success: false, 
+      error: error.message,
+      usedOpenAI: false
+    });
+  }
+});
 
 // Temporary test route
 app.post('/api/auth/register', (req, res) => {
@@ -1285,7 +1470,7 @@ FEEDBACK: ${JSON.stringify(feedback)}
 Provide realistic hiring probability and detailed analysis.`;
 
         const response = await openai.chat.completions.create({
-          model: "gpt-4",
+          model: "gpt-3.5-turbo",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt }
@@ -1323,6 +1508,154 @@ Provide realistic hiring probability and detailed analysis.`;
     });
   }
 });
+
+// Code execution endpoint for interview code editor
+app.post('/api/execute-code', async (req, res) => {
+  try {
+    const { code, language } = req.body;
+    
+    if (!code || !language) {
+      return res.status(400).json({ 
+        message: 'Code and language are required' 
+      });
+    }
+    
+    // Use existing code execution logic
+    const result = await executeCode(code, language);
+    
+    res.json({
+      output: result.output,
+      error: result.error,
+      executionTime: result.executionTime
+    });
+    
+  } catch (error) {
+    console.error('Error executing code:', error);
+    res.status(500).json({ 
+      message: 'Failed to execute code',
+      error: error.message 
+    });
+  }
+});
+
+// Optimized interview answer processing function
+async function processInterviewAnswerDirectly(session, questionId, answer, code, user) {
+  const startTime = Date.now();
+  
+  try {
+    console.log(`[Processing] Starting answer processing for question ${questionId}`);
+    
+    // Add answer to session
+    if (!session.answers) session.answers = [];
+    if (!session.scores) session.scores = [];
+    
+    const answerData = {
+      questionId,
+      answer,
+      code,
+      timestamp: new Date()
+    };
+    
+    session.answers.push(answerData);
+    console.log(`[Processing] Answer added to session in ${Date.now() - startTime}ms`);
+    
+    // Generate AI feedback with timeout
+    console.log(`[Processing] Starting AI feedback generation`);
+    const feedbackStartTime = Date.now();
+    
+    // Find the current question object
+    const currentQuestion = session.questions?.[session.currentQuestionIndex || 0];
+    console.log(`[Processing] Current question:`, currentQuestion);
+    
+    const feedback = await generateInterviewFeedbackWithTimeout(answer, session.userLevel, currentQuestion, session.jobDescription);
+    console.log(`[Processing] AI feedback generated in ${Date.now() - feedbackStartTime}ms`);
+    
+    // Add score to session
+    session.scores.push(feedback.score || 7);
+    
+    // Check if interview should continue
+    const currentQuestionIndex = session.currentQuestionIndex || 0;
+    const totalQuestions = session.questions?.length || 15;
+    
+    if (currentQuestionIndex + 1 >= totalQuestions) {
+      // Interview complete
+      session.status = 'completed';
+      session.endTime = new Date();
+      session.duration = Math.round((session.endTime - session.startTime) / 1000 / 60);
+      
+      console.log(`[Processing] Interview complete, generating final feedback`);
+      const finalFeedback = await generateFinalFeedback(session);
+      
+      const totalTime = Date.now() - startTime;
+      console.log(`[Processing] Interview completed successfully in ${totalTime}ms`);
+      
+      return {
+        feedback: feedback.message,
+        interviewComplete: true,
+        finalFeedback: finalFeedback
+      };
+    } else {
+      // Move to next question
+      session.currentQuestionIndex = currentQuestionIndex + 1;
+      const nextQuestion = session.questions[session.currentQuestionIndex];
+      
+      const totalTime = Date.now() - startTime;
+      console.log(`[Processing] Question processed successfully in ${totalTime}ms, moving to next question`);
+      
+      return {
+        feedback: feedback.message,
+        nextQuestion: nextQuestion,
+        interviewComplete: false
+      };
+    }
+    
+  } catch (error) {
+    const totalTime = Date.now() - startTime;
+    console.error(`[Processing] Error processing interview answer after ${totalTime}ms:`, error);
+    throw error;
+  }
+}
+
+// Generate interview feedback with timeout
+async function generateInterviewFeedbackWithTimeout(answer, userLevel, question, jobContext) {
+  console.log('=== generateInterviewFeedbackWithTimeout called ===');
+  console.log('🔑 OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
+  console.log('⏱️ Setting 15 second timeout for OpenAI call');
+  
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('❌ No OpenAI API key, using fallback immediately');
+      return generateFallbackInterviewFeedback(userLevel);
+    }
+
+    // Create a promise with timeout
+    const feedbackPromise = generateInterviewFeedback(answer, userLevel, question, jobContext);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => {
+        console.log('⏰ OpenAI API timeout after 15 seconds');
+        reject(new Error('OpenAI API timeout after 15 seconds'));
+      }, 15000)
+    );
+    
+    console.log('🏁 Racing OpenAI call against timeout...');
+    // Race between feedback and timeout
+    const result = await Promise.race([feedbackPromise, timeoutPromise]);
+    console.log('✅ OpenAI call completed successfully within timeout');
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Error in feedback generation with timeout:', error);
+    console.error('🔍 Error details:', {
+      message: error.message,
+      type: error.type,
+      code: error.code,
+      status: error.status
+    });
+    console.log('🔄 Returning fallback feedback due to error/timeout');
+    // Return fallback feedback if AI fails or times out
+    return generateFallbackInterviewFeedback(userLevel);
+  }
+}
 
 // Fallback function for hiring probability analysis
 function generateFallbackHiringAnalysis(feedback, scores, res) {
@@ -1382,9 +1715,17 @@ function generateFallbackHiringAnalysis(feedback, scores, res) {
 // Helper functions for mock interviews
 
 async function generateInterviewFeedback(answer, userLevel, question, jobContext) {
+  console.log('=== generateInterviewFeedback called ===');
+  console.log('🔑 OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
+  console.log('🔢 OPENAI_API_KEY length:', process.env.OPENAI_API_KEY?.length || 0);
+  console.log('📝 Answer length:', answer?.length || 0);
+  console.log('👤 User level:', userLevel);
+  console.log('❓ Question:', question?.title || 'No title');
+  console.log('💼 Job context:', jobContext || 'No context');
+  
   try {
     if (!process.env.OPENAI_API_KEY) {
-      console.log('OpenAI API key not found, using fallback feedback');
+      console.log('❌ OpenAI API key not found, using fallback feedback');
       return generateFallbackInterviewFeedback(userLevel);
     }
 
@@ -1437,8 +1778,9 @@ ${answer}
 
 Please provide detailed feedback, score, and suggestions.`;
 
+    console.log('📡 Making OpenAI API call for interview feedback...');
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-3.5-turbo",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
@@ -1448,7 +1790,7 @@ Please provide detailed feedback, score, and suggestions.`;
     });
 
     const content = response.choices[0].message.content;
-    console.log('OpenAI feedback response:', content);
+    console.log('✅ OpenAI feedback response received:', content);
 
     try {
       const parsedResponse = JSON.parse(content);
@@ -1461,14 +1803,22 @@ Please provide detailed feedback, score, and suggestions.`;
         detailedFeedback: parsedResponse.detailedFeedback || {}
       };
     } catch (parseError) {
-      console.error('Failed to parse OpenAI feedback response:', parseError);
-      console.log('Raw feedback response:', content);
-      return generateFallbackInterviewFeedback(mode, userLevel);
+      console.error('❌ Failed to parse OpenAI feedback response:', parseError);
+      console.log('📝 Raw feedback response:', content);
+      console.log('🔄 Falling back to fallback feedback');
+      return generateFallbackInterviewFeedback(userLevel);
     }
 
   } catch (error) {
-    console.error('Error in AI interview feedback:', error);
-    return generateFallbackInterviewFeedback(mode, userLevel);
+    console.error('❌ Error in AI interview feedback:', error);
+    console.error('🔍 Error details:', {
+      message: error.message,
+      type: error.type,
+      code: error.code,
+      status: error.status
+    });
+    console.log('🔄 Falling back to fallback feedback');
+    return generateFallbackInterviewFeedback(userLevel);
   }
 }
 
@@ -1570,7 +1920,7 @@ async function analyzeJobAndGenerateQuestions(jobDescription, userLevel = 'inter
       "context": "Why this question is relevant to the job",
       "expectedAnswer": "What a good answer should include",
       "difficulty": "easy/medium/hard",
-      "hints": ["hint1", "hint2"],
+
       "scoringCriteria": {
         "technicalAccuracy": "What to look for",
         "problemSolving": "How they approach problems",
@@ -1597,7 +1947,7 @@ CANDIDATE LEVEL: ${userLevel}
 Generate questions that will help determine if this candidate is a good fit for this specific role.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-3.5-turbo",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
@@ -1636,7 +1986,7 @@ function generateFallbackInterviewQuestions(userLevel) {
       context: 'This tests fundamental programming knowledge and problem-solving skills.',
       expectedAnswer: 'Should implement stack using array or linked list, explain O(1) operations.',
       difficulty: 'medium',
-      hints: ['Think about LIFO principle', 'Consider edge cases like empty stack'],
+
       scoringCriteria: {
         technicalAccuracy: 'Correct implementation and time complexity',
         problemSolving: 'Logical approach and edge case handling',
@@ -1656,7 +2006,7 @@ function generateFallbackInterviewQuestions(userLevel) {
       context: 'Tests algorithmic thinking and optimization skills.',
       expectedAnswer: 'Should discuss brute force O(n²), hash map O(n), and trade-offs.',
       difficulty: 'medium',
-      hints: ['Consider using a hash map', 'Think about trading space for time'],
+
       scoringCriteria: {
         technicalAccuracy: 'Correct algorithm and complexity analysis',
         problemSolving: 'Multiple approaches considered',
@@ -2029,7 +2379,7 @@ async function generateWelcomeMessage(topic, skillLevel, user) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',
@@ -2110,7 +2460,7 @@ Format the response as JSON with this structure:
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',
@@ -2190,7 +2540,7 @@ Format as JSON:
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',
@@ -2326,7 +2676,7 @@ async function generateTutoringResponse(studentMessage, codeSnippet, skillLevel,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',

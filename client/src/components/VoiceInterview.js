@@ -2,6 +2,7 @@ import Editor from '@monaco-editor/react';
 import { Camera, CameraOff, Code, Mic, Play, Square, Volume2, VolumeX } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Webcam from 'react-webcam';
+import io from 'socket.io-client';
 
 const VoiceInterview = ({ 
   currentQuestion, 
@@ -31,6 +32,82 @@ const VoiceInterview = ({
   const webcamRef = useRef(null);
   const recognitionRef = useRef(null);
   const synthesisRef = useRef(null);
+  const socketRef = useRef(null);
+  
+  // Initialize WebSocket connection
+  useEffect(() => {
+    // Connect to WebSocket server with proper configuration
+    socketRef.current = io('http://localhost:5001', {
+      auth: {
+        token: 'test-token-123' // Use auth token from context
+      },
+      transports: ['websocket', 'polling'],
+      timeout: 10000
+    });
+    
+    // Authenticate with WebSocket server
+    socketRef.current.emit('authenticate', { token: 'test-token-123' });
+    
+    // Wait for authentication before joining session
+    socketRef.current.on('authenticated', (data) => {
+      console.log('WebSocket authenticated:', data);
+      
+      // Join interview session after authentication
+      if (sessionData?.id) {
+        socketRef.current.emit('join-interview-session', sessionData.id);
+      }
+    });
+    
+    // Handle authentication errors
+    socketRef.current.on('authentication_error', (data) => {
+      console.error('WebSocket authentication failed:', data);
+    });
+    
+    // Listen for real-time responses
+    socketRef.current.on('interview:ai-response', (data) => {
+      if (data.interviewComplete) {
+        onInterviewEnd(data.finalFeedback);
+      } else if (data.nextQuestion) {
+        speakQuestion(data.nextQuestion);
+      }
+      
+      // Speak the feedback
+      if (data.feedback) {
+        speakText(data.feedback);
+      }
+    });
+    
+    // Listen for processing status
+    socketRef.current.on('interview:processing-status', (data) => {
+      console.log('Processing status:', data);
+    });
+    
+    // Listen for errors
+    socketRef.current.on('interview:error', (data) => {
+      console.error('Interview error:', data);
+      speakText(`Error: ${data.message}`);
+    });
+    
+    // Listen for general WebSocket errors
+    socketRef.current.on('error', (data) => {
+      console.error('WebSocket error:', data);
+    });
+    
+    // Listen for connection status
+    socketRef.current.on('connect', () => {
+      console.log('WebSocket connected successfully');
+    });
+    
+    socketRef.current.on('disconnect', () => {
+      console.log('WebSocket disconnected');
+    });
+    
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [sessionData?.id]);
   
   // Initialize speech recognition
   useEffect(() => {
@@ -86,9 +163,17 @@ const VoiceInterview = ({
       setIsListening(true);
       setTranscript('');
       setSpeechText('');
+      
+      // Notify server that user started speaking
+      if (socketRef.current && sessionData?.id) {
+        socketRef.current.emit('interview:voice-start', {
+          sessionId: sessionData.id
+        });
+      }
+      
       recognitionRef.current.start();
     }
-  }, [isListening]);
+  }, [isListening, sessionData?.id]);
   
   // Stop listening and process answer
   const stopListening = useCallback(() => {
@@ -97,14 +182,50 @@ const VoiceInterview = ({
       setIsListening(false);
       setIsProcessing(true);
       
-      // Process the final transcript
+      // Process the final transcript via WebSocket
       if (transcript.trim()) {
-        processAnswer(transcript);
+        processAnswerViaWebSocket(transcript);
       }
     }
-  }, [isListening, transcript]);
+  }, [isListening, transcript, sessionData?.id]);
   
-  // Process user's answer
+  // Process user's answer via WebSocket for real-time communication
+  const processAnswerViaWebSocket = (answer) => {
+    if (socketRef.current && sessionData?.id) {
+      // Send answer via WebSocket for immediate processing
+      socketRef.current.emit('interview:voice-end', {
+        sessionId: sessionData.id,
+        questionId: currentQuestion?.id,
+        completeAnswer: answer,
+        code: showCodeEditor ? currentCode : null
+      });
+      
+      // Set a timeout for processing (30 seconds max)
+      const processingTimeout = setTimeout(() => {
+        if (isProcessing) {
+          setIsProcessing(false);
+          speakText('Processing is taking longer than expected. Please try again or contact support.');
+        }
+      }, 30000);
+      
+      // Listen for response to clear timeout
+      const handleResponse = (data) => {
+        clearTimeout(processingTimeout);
+        setIsProcessing(false);
+        
+        // Remove the one-time listener
+        socketRef.current.off('interview:ai-response', handleResponse);
+      };
+      
+      socketRef.current.once('interview:ai-response', handleResponse);
+      
+    } else {
+      // Fallback to HTTP if WebSocket not available
+      processAnswer(answer);
+    }
+  };
+  
+  // Fallback HTTP-based answer processing
   const processAnswer = async (answer) => {
     try {
       // Send answer to backend for processing
@@ -210,25 +331,25 @@ const VoiceInterview = ({
   
   // Video constraints for webcam
   const videoConstraints = {
-    width: 640,
-    height: 480,
+    width: 1280,
+    height: 720,
     facingMode: 'user'
   };
   
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-screen flex flex-col bg-gray-900">
       {/* Header with Interview Info */}
-      <div className="bg-white border-b border-secondary-200 p-4">
+      <div className="bg-gray-800 border-b border-gray-700 p-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
-              <Code className="h-5 w-5 text-primary-600" />
-              <span className="text-lg font-semibold text-secondary-900">
+              <Code className="h-5 w-5 text-blue-400" />
+              <span className="text-lg font-semibold text-white">
                 AI-Powered Interview
               </span>
             </div>
             {jobData && (
-              <div className="flex items-center space-x-2 text-sm text-secondary-600">
+              <div className="flex items-center space-x-2 text-sm text-gray-300">
                 <span>🎯 {jobData.jobTitle} at {jobData.company || 'Company'}</span>
                 <span>• {jobData.totalQuestions || 15} questions</span>
               </div>
@@ -237,7 +358,7 @@ const VoiceInterview = ({
           
           <button
             onClick={onInterviewEnd}
-            className="btn-secondary flex items-center space-x-2"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
           >
             <Square className="h-4 w-4" />
             <span>End Interview</span>
@@ -246,170 +367,112 @@ const VoiceInterview = ({
       </div>
       
       {/* Main Interview Interface */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-secondary-50">
-        {/* Left Side - Camera and Voice Controls */}
-        <div className="space-y-6">
-          {/* Camera Section */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-secondary-900 flex items-center">
-                <Camera className="h-5 w-5 mr-2 text-primary-600" />
-                Your Camera
-              </h3>
-              <button
-                onClick={toggleCamera}
-                className="btn-secondary text-sm px-3 py-1"
-              >
-                {cameraEnabled ? (
-                  <>
-                    <CameraOff className="h-4 w-4 mr-1" />
-                    Turn Off
-                  </>
-                ) : (
-                  <>
-                    <Camera className="h-4 w-4 mr-1" />
-                    Turn On
-                  </>
-                )}
-              </button>
-            </div>
-            
-            {cameraEnabled ? (
-              <div className="relative">
-                <Webcam
-                  ref={webcamRef}
-                  audio={false}
-                  videoConstraints={videoConstraints}
-                  className="w-full h-64 rounded-lg"
-                  mirrored={true}
-                />
-                {interviewerSpeaking && (
-                  <div className="absolute top-2 right-2 bg-primary-500 text-white px-2 py-1 rounded-full text-xs animate-pulse">
-                    AI Speaking
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="w-full h-64 bg-secondary-100 rounded-lg flex items-center justify-center">
-                <CameraOff className="h-16 w-16 text-secondary-400" />
-              </div>
-            )}
-          </div>
-          
-          {/* Voice Controls */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-secondary-900 mb-4 flex items-center">
-              <Mic className="h-5 w-5 mr-2 text-primary-600" />
-              Voice Controls
-            </h3>
-            
-            <div className="space-y-4">
-              {/* Recording Controls */}
-              <div className="flex items-center justify-center space-x-4">
-                {!isListening ? (
-                  <button
-                    onClick={startListening}
-                    disabled={isProcessing}
-                    className="btn-primary flex items-center space-x-2 px-6 py-3 disabled:opacity-50"
-                  >
-                    <Mic className="h-5 w-5" />
-                    <span>Start Answering</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={stopListening}
-                    className="btn-secondary flex items-center space-x-2 px-6 py-3"
-                  >
-                    <Square className="h-5 w-5" />
-                    <span>Stop & Submit</span>
-                  </button>
-                )}
-                
-                <button
-                  onClick={toggleMute}
-                  className={`p-3 rounded-full ${
-                    isMuted ? 'bg-red-100 text-red-600' : 'bg-secondary-100 text-secondary-600'
-                  }`}
-                >
-                  {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-                </button>
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Side - Full Height Camera */}
+        <div className="flex-1 relative bg-black">
+          {cameraEnabled ? (
+            <div className="relative h-full">
+              <Webcam
+                ref={webcamRef}
+                audio={false}
+                videoConstraints={videoConstraints}
+                className="w-full h-full object-cover rounded-none"
+                mirrored={true}
+              />
+              
+              {/* User Info Overlay */}
+              <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white px-3 py-2 rounded-lg">
+                <div className="text-sm font-medium">You</div>
+                <div className="text-xs text-gray-300">Live</div>
               </div>
               
+              {/* AI Speaking Indicator */}
+              {interviewerSpeaking && (
+                <div className="absolute top-4 right-4 bg-blue-600 text-white px-3 py-2 rounded-lg animate-pulse">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                    <span className="text-sm font-medium">AI Speaking</span>
+                  </div>
+                </div>
+              )}
+              
               {/* Status Indicators */}
-              <div className="text-center space-y-2">
+              <div className="absolute bottom-20 left-4 right-4">
                 {isListening && (
-                  <div className="flex items-center justify-center space-x-2 text-primary-600">
-                    <div className="w-2 h-2 bg-primary-600 rounded-full animate-pulse"></div>
-                    <span className="text-sm font-medium">Listening... Speak now!</span>
+                  <div className="bg-green-600 text-white px-4 py-2 rounded-lg text-center animate-pulse">
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                      <span className="font-medium">Listening... Speak now!</span>
+                    </div>
                   </div>
                 )}
                 
                 {isProcessing && (
-                  <div className="flex items-center justify-center space-x-2 text-secondary-600">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-secondary-600"></div>
-                    <span className="text-sm">Processing your answer...</span>
+                  <div className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-center">
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span className="font-medium">Processing your answer...</span>
+                    </div>
                   </div>
                 )}
                 
-                {interviewerSpeaking && (
-                  <div className="flex items-center justify-center space-x-2 text-green-600">
-                    <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
-                    <span className="text-sm font-medium">AI is speaking...</span>
+                {/* Transcript Display */}
+                {speechText && (
+                  <div className="bg-black bg-opacity-70 text-white px-4 py-3 rounded-lg mt-2">
+                    <p className="text-sm">
+                      <span className="font-medium">Your answer:</span> {speechText}
+                    </p>
                   </div>
                 )}
               </div>
-              
-              {/* Transcript Display */}
-              {speechText && (
-                <div className="bg-secondary-50 rounded-lg p-3">
-                  <p className="text-sm text-secondary-700">
-                    <span className="font-medium">Your answer:</span> {speechText}
-                  </p>
-                </div>
-              )}
             </div>
-          </div>
+          ) : (
+            <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+              <div className="text-center text-gray-400">
+                <CameraOff className="h-24 w-24 mx-auto mb-4" />
+                <p className="text-lg font-medium">Camera Off</p>
+                <p className="text-sm">Click the camera button to enable</p>
+              </div>
+            </div>
+          )}
         </div>
         
-        {/* Right Side - Code Editor and Question */}
-        <div className="space-y-6">
+        {/* Right Side - Question and Code Editor */}
+        <div className="w-96 bg-gray-800 flex flex-col">
           {/* Current Question */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-secondary-900 mb-4 flex items-center">
-              <Code className="h-5 w-5 mr-2 text-primary-600" />
+          <div className="p-6 border-b border-gray-700">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+              <Code className="h-5 w-5 mr-2 text-blue-400" />
               Current Question
             </h3>
             
             {currentQuestion && (
               <div className="space-y-4">
-                <div className="bg-primary-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-primary-900 mb-2">
+                <div className="bg-gray-700 p-4 rounded-lg">
+                  <h4 className="font-medium text-white mb-2">
                     {currentQuestion.title}
                   </h4>
-                  <p className="text-primary-700 text-sm">
+                  <p className="text-gray-300 text-sm leading-relaxed">
                     {currentQuestion.description}
                   </p>
                   
-                  {currentQuestion.hints && Array.isArray(currentQuestion.hints) && (
-                    <div className="mt-3 pt-3 border-t border-primary-200">
-                      <p className="text-xs text-primary-600 mb-1">💡 Hints:</p>
-                      <ul className="text-xs text-primary-600 space-y-1">
-                        {currentQuestion.hints.map((hint, idx) => (
-                          <li key={idx}>• {hint}</li>
-                        ))}
-                      </ul>
+                  {/* Question Context */}
+                  {currentQuestion.context && (
+                    <div className="mt-3 pt-3 border-t border-gray-600">
+                      <p className="text-xs text-gray-400 mb-1">Context:</p>
+                      <p className="text-xs text-gray-300">{currentQuestion.context}</p>
                     </div>
                   )}
                 </div>
                 
                 {/* Code Editor Toggle */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-secondary-600">
-                    {showCodeEditor ? 'Code Editor Active' : 'Click to add code if needed'}
+                  <span className="text-sm text-gray-400">
+                    {showCodeEditor ? 'Code Editor Active' : 'Add code if needed'}
                   </span>
                   <button
                     onClick={() => setShowCodeEditor(!showCodeEditor)}
-                    className="btn-secondary text-sm px-3 py-1"
+                    className="bg-gray-600 hover:bg-gray-500 text-white text-sm px-3 py-1 rounded transition-colors"
                   >
                     {showCodeEditor ? 'Hide Editor' : 'Show Code Editor'}
                   </button>
@@ -420,10 +483,10 @@ const VoiceInterview = ({
           
           {/* Code Editor */}
           {showCodeEditor && (
-            <div className="bg-white rounded-lg shadow-lg p-6">
+            <div className="flex-1 p-6 border-b border-gray-700">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-secondary-900 flex items-center">
-                  <Code className="h-5 w-5 mr-2 text-primary-600" />
+                <h3 className="text-lg font-semibold text-white flex items-center">
+                  <Code className="h-5 w-5 mr-2 text-blue-400" />
                   Code Editor
                 </h3>
                 
@@ -431,7 +494,7 @@ const VoiceInterview = ({
                   <select
                     value={selectedLanguage}
                     onChange={(e) => setSelectedLanguage(e.target.value)}
-                    className="text-sm border border-secondary-300 rounded px-2 py-1"
+                    className="text-sm bg-gray-700 text-white border border-gray-600 rounded px-2 py-1"
                   >
                     <option value="javascript">JavaScript</option>
                     <option value="python">Python</option>
@@ -442,21 +505,21 @@ const VoiceInterview = ({
                   
                   <button
                     onClick={handleCodeExecution}
-                    className="btn-primary text-sm px-3 py-1"
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded transition-colors"
                   >
                     <Play className="h-4 w-4 mr-1" />
-                    Run Code
+                    Run
                   </button>
                 </div>
               </div>
               
-              <div className="border border-secondary-200 rounded-lg overflow-hidden">
+              <div className="border border-gray-600 rounded-lg overflow-hidden">
                 <Editor
                   height="300px"
                   language={selectedLanguage}
                   value={currentCode}
                   onChange={setCurrentCode}
-                  theme="vs-light"
+                  theme="vs-dark"
                   options={{
                     minimap: { enabled: false },
                     fontSize: 14,
@@ -469,6 +532,69 @@ const VoiceInterview = ({
               </div>
             </div>
           )}
+        </div>
+      </div>
+      
+      {/* Bottom Control Bar - Video Call Style */}
+      <div className="bg-gray-800 border-t border-gray-700 p-4 flex-shrink-0">
+        <div className="flex items-center justify-center space-x-6">
+          {/* Microphone Control */}
+          <button
+            onClick={isListening ? stopListening : startListening}
+            disabled={isProcessing}
+            className={`p-4 rounded-full transition-all duration-200 ${
+              isListening 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-gray-600 hover:bg-gray-500 text-white'
+            } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {isListening ? (
+              <Square className="h-6 w-6" />
+            ) : (
+              <Mic className="h-6 w-6" />
+            )}
+          </button>
+          
+          {/* Camera Toggle */}
+          <button
+            onClick={toggleCamera}
+            className={`p-4 rounded-full transition-all duration-200 ${
+              cameraEnabled 
+                ? 'bg-gray-600 hover:bg-gray-500 text-white' 
+                : 'bg-red-600 hover:bg-red-700 text-white'
+            }`}
+          >
+            {cameraEnabled ? (
+              <Camera className="h-6 w-6" />
+            ) : (
+              <CameraOff className="h-6 w-6" />
+            )}
+          </button>
+          
+          {/* Mute/Unmute AI */}
+          <button
+            onClick={toggleMute}
+            className={`p-4 rounded-full transition-all duration-200 ${
+              isMuted 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-gray-600 hover:bg-gray-500 text-white'
+            }`}
+          >
+            {isMuted ? (
+              <VolumeX className="h-6 w-6" />
+            ) : (
+              <Volume2 className="h-6 w-6" />
+            )}
+          </button>
+        </div>
+        
+        {/* Status Text */}
+        <div className="text-center mt-3">
+          <p className="text-sm text-gray-400">
+            {isListening ? 'Click the red button to stop recording' : 
+             isProcessing ? 'Processing your answer...' : 
+             'Click the microphone to start answering'}
+          </p>
         </div>
       </div>
     </div>
