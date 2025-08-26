@@ -8,6 +8,60 @@ const rateLimit = require('express-rate-limit');
 const OpenAI = require('openai');
 require('dotenv').config();
 
+// ✨ NEW: Request queuing system to prevent API overload
+let apiRequestQueue = [];
+let isProcessingQueue = false;
+let lastApiCall = 0;
+const MIN_API_INTERVAL = 2000; // 2 seconds between calls
+
+// Queue processing function
+async function processApiQueue() {
+  if (isProcessingQueue || apiRequestQueue.length === 0) return;
+  
+  isProcessingQueue = true;
+  console.log(`🚀 Processing API queue. Items: ${apiRequestQueue.length}`);
+  
+  while (apiRequestQueue.length > 0) {
+    const request = apiRequestQueue.shift();
+    const timeSinceLastCall = Date.now() - lastApiCall;
+    
+    if (timeSinceLastCall < MIN_API_INTERVAL) {
+      const waitTime = MIN_API_INTERVAL - timeSinceLastCall;
+      console.log(`⏳ Waiting ${waitTime}ms before next API call...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    lastApiCall = Date.now();
+    console.log(`📡 Making API call at ${new Date().toISOString()}`);
+    
+    try {
+      const result = await request.process();
+      request.resolve(result);
+      console.log(`✅ API call completed successfully`);
+    } catch (error) {
+      console.error(`❌ API call failed:`, error.message);
+      request.reject(error);
+    }
+  }
+  
+  isProcessingQueue = false;
+  console.log(`🏁 API queue processing complete`);
+}
+
+// Queued API call wrapper
+function queueApiCall(processFunction) {
+  return new Promise((resolve, reject) => {
+    apiRequestQueue.push({
+      process: processFunction,
+      resolve,
+      reject
+    });
+    
+    console.log(`📋 API request queued. Queue length: ${apiRequestQueue.length}`);
+    processApiQueue();
+  });
+}
+
 // Initialize OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -168,12 +222,12 @@ io.on('connection', (socket) => {
     console.log('Greeting status update:', data);
   });
   
-  // ✨ NEW: Handle continuous conversation turns
+  // ✨ FIXED: Handle continuous conversation turns with rate limiting
   socket.on('interview:conversation-turn', async (data) => {
     const { sessionId, userResponse, conversationMemory, jobContext } = data;
     const startTime = Date.now();
     
-    console.log(`[Conversation] Processing turn for session ${sessionId}`);
+    console.log(`[Conversation] Queuing turn for session ${sessionId}`);
     
     try {
       const user = userDatabase.get(currentUserEmail);
@@ -184,15 +238,11 @@ io.on('connection', (socket) => {
         return;
       }
       
-      // Process conversation turn with AI
-      const conversationResult = await processConversationTurn(
-        session, 
-        userResponse, 
-        conversationMemory, 
-        jobContext
+      // ✨ NEW: Queue the API call instead of calling directly
+      const conversationResult = await queueApiCall(() => 
+        processConversationTurn(session, userResponse, conversationMemory, jobContext)
       );
       
-      // Send conversation response back
       socket.emit('interview:conversation-response', conversationResult);
       
       const processingTime = Date.now() - startTime;
@@ -296,15 +346,19 @@ app.get('/api/auth/me', (req, res) => {
   if (!currentUserEmail) {
     return res.status(401).json({ message: 'Not authenticated' });
   }
+  
   const user = userDatabase.get(currentUserEmail);
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
   
   res.json({
     user: {
       _id: user._id,
       name: user.name,
       email: user.email,
-      skillLevels: user.skillLevels,
-      statistics: user.statistics
+      skillLevels: user.skillLevels || {},
+      statistics: user.statistics || {}
     }
   });
 });
@@ -860,9 +914,9 @@ app.post('/api/mock-interview/start', async (req, res) => {
     let firstQuestion, welcomeMessage, jobAnalysis;
     
     if (jobDescription) {
-      // Use AI to analyze job and generate tailored questions
-      console.log('Analyzing job description with AI...');
-      const aiResponse = await analyzeJobAndGenerateQuestions(jobDescription, userLevel);
+          // Use AI to analyze job and generate tailored questions
+    console.log('Analyzing job description with AI...');
+    const aiResponse = await queueApiCall(() => analyzeJobAndGenerateQuestions(jobDescription, userLevel));
       
       jobAnalysis = aiResponse.jobAnalysis;
       session.questions = aiResponse.interviewQuestions;
@@ -942,7 +996,7 @@ app.post('/api/mock-interview/start', async (req, res) => {
     const currentQuestionData = session.questions[session.currentQuestionIndex] || null;
     const jobContext = session.jobAnalysis ? `Role requiring ${session.jobAnalysis.requiredSkills.join(', ')}` : 'General technical role';
     
-    const feedback = await generateInterviewFeedback(answer, session.userLevel, currentQuestionData, jobContext);
+    const feedback = await queueApiCall(() => generateInterviewFeedback(answer, session.userLevel, currentQuestionData, jobContext));
     
     // Store score and detailed feedback
     session.scores.push(feedback.score);
@@ -1101,7 +1155,7 @@ app.post('/api/mock-interview/start-with-job', async (req, res) => {
     
     // Use AI to analyze job and generate tailored questions
     console.log('Starting AI-powered job analysis...');
-    const aiResponse = await analyzeJobAndGenerateQuestions(jobDescription, userLevel);
+    const aiResponse = await queueApiCall(() => analyzeJobAndGenerateQuestions(jobDescription, userLevel));
     
     session.jobAnalysis = aiResponse.jobAnalysis;
     session.questions = aiResponse.interviewQuestions;
@@ -1371,7 +1425,8 @@ Please provide detailed feedback, score, and suggestions.`;
         { role: "user", content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 1500
+      max_tokens: 1500,
+      response_format: { type: "json_object" }  // ✨ NEW: Force JSON response
     });
 
     const content = response.choices[0].message.content;
@@ -1441,66 +1496,30 @@ async function analyzeJobAndGenerateQuestions(jobDescription, userLevel = 'inter
       return generateFallbackInterviewQuestions(userLevel); // Remove mode parameter
     }
 
-    const systemPrompt = `You are an expert technical interviewer and job analyst. Your task is to:
+    // ✨ MUCH SHORTER prompt to avoid truncation
+    const systemPrompt = `You are an expert interviewer. Analyze the job and create 8-10 interview questions.
 
-1. ANALYZE the job description to identify:
-   - Required technical skills and technologies
-   - Experience level and seniority
-   - Key responsibilities and challenges
-   - Company culture and values
-   - Industry-specific requirements
-
-2. GENERATE 12-15 comprehensive interview questions that:
-   - Cover ALL aspects of the job requirements
-   - Mix different question types (technical, behavioral, system design) as appropriate
-   - Progress from easier to more challenging questions
-   - Test both technical skills and soft skills relevant to the role
-   - Include scenario-based questions specific to the job context
-
-3. FORMAT your response as a JSON object with this structure:
+Format as JSON:
 {
   "jobAnalysis": {
-    "requiredSkills": ["skill1", "skill2", "skill3"],
+    "requiredSkills": ["skill1", "skill2"],
     "experienceLevel": "junior/mid/senior",
-    "keyResponsibilities": ["responsibility1", "responsibility2", "responsibility3"],
-    "companyCulture": "description",
-    "industryFocus": "specific industry or domain",
-    "seniorityIndicators": ["indicator1", "indicator2"]
+    "keyResponsibilities": ["resp1", "resp2"]
   },
   "interviewQuestions": [
     {
       "id": "q1",
-      "type": "technical/behavioral/system-design",
+      "type": "technical",
       "title": "Question title",
-      "description": "Detailed question description",
-      "context": "Why this question is relevant to the job",
-      "expectedAnswer": "What a good answer should include",
-      "difficulty": "easy/medium/hard",
-      "hints": ["hint1", "hint2"],
-      "scoringCriteria": {
-        "technicalAccuracy": "What to look for",
-        "problemSolving": "How they approach problems",
-        "communication": "How clearly they explain",
-        "jobRelevance": "How well this relates to the specific role"
-      },
-      "followUpQuestions": [
-        "If they struggle, ask: [follow-up question]",
-        "If they excel, ask: [challenging follow-up]"
-      ]
+      "description": "Question details",
+      "difficulty": "easy"
     }
   ]
-}
+}`;
 
-IMPORTANT: Generate 12-15 questions minimum. Mix question types naturally based on the job requirements.`;
-
-    const userPrompt = `Please analyze this job description and generate tailored interview questions:
-
-JOB DESCRIPTION:
-${jobDescription}
-
-CANDIDATE LEVEL: ${userLevel}
-
-Generate questions that will help determine if this candidate is a good fit for this specific role.`;
+    const userPrompt = `Job: ${jobDescription.substring(0, 500)}
+Level: ${userLevel}
+Create 8 interview questions covering technical and behavioral aspects.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -1509,19 +1528,26 @@ Generate questions that will help determine if this candidate is a good fit for 
         { role: "user", content: userPrompt }
       ],
       temperature: 0.7,
-      max_tokens: 2000
+      max_tokens: 1500,
+      response_format: { type: "json_object" }  // ✨ NEW: Force JSON response
     });
 
-    const content = response.choices[0].message.content;
-    console.log('OpenAI response for job analysis:', content);
-
+    const content = response.choices[0].message.content.trim();
+    
+    // ✨ NEW: Clean JSON before parsing
+    let cleanContent = content;
+    if (cleanContent.startsWith('```json')) {
+      cleanContent = cleanContent.replace(/```json\n?/g, '').replace(/\n?```/g, '');
+    }
+    
+    console.log('Cleaned job analysis response:', cleanContent);
+    
     try {
-      const parsedResponse = JSON.parse(content);
+      const parsedResponse = JSON.parse(cleanContent);
       return parsedResponse;
     } catch (parseError) {
-      console.error('Failed to parse OpenAI response:', parseError);
-      console.log('Raw response:', content);
-      return generateFallbackInterviewQuestions(userLevel); // Remove mode parameter
+      console.error('Failed to parse job analysis:', parseError);
+      return generateFallbackInterviewQuestions(userLevel);
     }
 
   } catch (error) {
@@ -1910,38 +1936,38 @@ async function generateWelcomeMessage(topic, skillLevel, user) {
   }
 }
 
-// ✨ NEW: AI conversation processing for continuous interview flow
+// ✨ FIXED: AI conversation processing with strict JSON enforcement
 async function processConversationTurn(session, userResponse, conversationMemory, jobContext) {
   try {
     if (!process.env.OPENAI_API_KEY) {
       return generateFallbackConversationResponse(userResponse, conversationMemory);
     }
 
-    // ✨ FIXED: Make the system prompt much shorter to avoid truncation
-    const systemPrompt = `You are an AI interviewer. Respond naturally and ask follow-up questions.
+    // Check if we should transition topics
+    const shouldTransition = conversationMemory.interviewProgress > 3 && 
+                            conversationMemory.currentTopic === 'introduction and background';
+    
+    // ✨ FIXED: More explicit JSON instruction
+    const systemPrompt = `You are an AI interviewer. CRITICAL: Respond with ONLY valid JSON format:
 
-IMPORTANT: Your response MUST be valid JSON in this exact format:
 {
   "aiResponse": {
-    "message": "Your response here - keep it under 100 words",
+    "message": "brief interviewer response",
     "type": "followup"
   },
   "conversationUpdate": {
     "currentTopic": "${conversationMemory.currentTopic}",
-    "newTopics": ["topic1"],
+    "newTopics": [],
     "followUpNeeded": []
   },
   "interviewStatus": "continue_conversation"
 }
 
-Keep responses short and conversational. No quotes or special characters that break JSON.`;
+Rules: Keep message under 25 words. No text outside JSON. Use double quotes only.`;
 
-    const userPrompt = `Candidate said: "${userResponse}"
-    
-Current topic: ${conversationMemory.currentTopic}
-Interview for: ${jobContext?.jobTitle || 'technical role'}
-
-Respond as an interviewer with a brief follow-up question or move to a new topic.`;
+    const userPrompt = `Candidate: "${userResponse.substring(0, 60)}" 
+Progress: ${conversationMemory.interviewProgress}
+Respond with JSON only.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -1949,34 +1975,45 @@ Respond as an interviewer with a brief follow-up question or move to a new topic
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.7,
-      max_tokens: 500  // ✨ FIXED: Reduced from 1000 to prevent truncation
+      temperature: 0.1,
+      max_tokens: 120,    // ✨ FIXED: Even smaller for better JSON compliance
+      response_format: { type: "json_object" }  // ✨ NEW: Force JSON response
     });
 
     const content = response.choices[0].message.content.trim();
+    console.log('Raw OpenAI response:', content);
     
-    // ✨ NEW: Clean the content before parsing
-    let cleanContent = content;
+    // ✨ IMPROVED: Better JSON extraction
+    let jsonContent = content;
     
-    // Remove markdown code blocks if present
-    if (cleanContent.startsWith('```json')) {
-      cleanContent = cleanContent.replace(/```json\n?/g, '').replace(/\n?```/g, '');
+    // Remove any markdown formatting
+    if (jsonContent.includes('```')) {
+      const jsonMatch = jsonContent.match(/```(?:json)?\s*(\{.*?\})\s*```/s);
+      if (jsonMatch) {
+        jsonContent = jsonMatch[1];
+      }
     }
     
-    // Fix common JSON issues
-    cleanContent = cleanContent.replace(/[\u2018\u2019]/g, "'"); // Smart quotes
-    cleanContent = cleanContent.replace(/[\u201C\u201D]/g, '"'); // Smart quotes
+    // Find JSON object boundaries
+    const firstBrace = jsonContent.indexOf('{');
+    const lastBrace = jsonContent.lastIndexOf('}');
     
-    console.log('Cleaned OpenAI response:', cleanContent);
-    
-    try {
-      const parsed = JSON.parse(cleanContent);
-      return parsed;
-    } catch (parseError) {
-      console.error('JSON parse failed, using fallback:', parseError);
-      console.log('Failed content:', cleanContent);
-      return generateFallbackConversationResponse(userResponse, conversationMemory);
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
+    } else {
+      throw new Error('No valid JSON structure found');
     }
+    
+    console.log('Extracted JSON:', jsonContent);
+    
+    const parsed = JSON.parse(jsonContent);
+    
+    // ✨ VALIDATION: Ensure required fields exist
+    if (!parsed.aiResponse || !parsed.aiResponse.message) {
+      throw new Error('Invalid response structure');
+    }
+    
+    return parsed;
     
   } catch (error) {
     console.error('Error in conversation processing:', error);
@@ -2078,35 +2115,25 @@ Format the response as JSON with this structure:
   "learningApproach": "description of how to approach learning"
 }`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert job analyst and career counselor. Analyze job descriptions to identify required skills, experience level, and create personalized learning paths.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: 1000,
-        temperature: 0.3
-      })
+    // ✨ FIXED: Use openai instance instead of fetch
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert job analyst and career counselor. Analyze job descriptions to identify required skills, experience level, and create personalized learning paths.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      max_tokens: 1000,
+      temperature: 0.3,
+      response_format: { type: "json_object" }  // ✨ NEW: Force JSON response
     });
 
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
+    const content = response.choices[0].message.content;
     const analysis = JSON.parse(content);
     
     return {
@@ -2158,35 +2185,25 @@ Format as JSON:
   ]
 }`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert learning path designer. Create personalized learning paths based on job requirements, user\'s current skills, and available preparation time.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: 1500,
-        temperature: 0.4
-      })
+    // ✨ FIXED: Use openai instance instead of fetch
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert learning path designer. Create personalized learning paths based on job requirements, user\'s current skills, and available preparation time.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      max_tokens: 1500,
+      temperature: 0.4,
+      response_format: { type: "json_object" }  // ✨ NEW: Force JSON response
     });
 
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
+    const content = response.choices[0].message.content;
     const learningPath = JSON.parse(content);
     
     return {
