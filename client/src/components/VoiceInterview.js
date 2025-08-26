@@ -1,5 +1,5 @@
 import Editor from '@monaco-editor/react';
-import { Camera, CameraOff, Code, Mic, Play, Square, Volume2, VolumeX } from 'lucide-react';
+import { Camera, CameraOff, Code, MessageSquare, Mic, Play, Square, Volume2, VolumeX } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Webcam from 'react-webcam';
 import io from 'socket.io-client';
@@ -31,6 +31,17 @@ const VoiceInterview = ({
   // ✨ NEW: Interview phase state
   const [interviewPhase, setInterviewPhase] = useState('greeting'); // greeting, questioning, complete
   const [isWaitingForUserResponse, setIsWaitingForUserResponse] = useState(false);
+  
+  // ✨ NEW: Conversation memory and continuous flow state
+  const [conversationMemory, setConversationMemory] = useState({
+    topicsDiscussed: [],
+    userResponses: [],
+    currentTopic: 'introduction',
+    followUpNeeded: [],
+    interviewProgress: 0
+  });
+  
+  const [isInConversation, setIsInConversation] = useState(false);
   
   const hasGreetingBeenSpokenRef = useRef(false);
   // Refs
@@ -68,7 +79,56 @@ const VoiceInterview = ({
       console.error('WebSocket authentication failed:', data);
     });
     
-    // Listen for real-time responses
+    // Handle WebSocket errors
+    socketRef.current.on('error', (error) => {
+      console.error('WebSocket error:', error);
+    });
+    
+    // Handle connection errors
+    socketRef.current.on('connect_error', (error) => {
+      console.error('WebSocket connection error:', error);
+    });
+    
+    // ✨ NEW: Listen for conversation flow responses
+    socketRef.current.on('interview:conversation-response', (data) => {
+      console.log('Received conversation response:', data);
+      
+      const { aiResponse, conversationUpdate, interviewStatus } = data;
+      
+      // Update conversation memory with AI's response and new context
+      if (conversationUpdate) {
+        setConversationMemory(prev => ({
+          ...prev,
+          ...conversationUpdate,
+          topicsDiscussed: [...new Set([...prev.topicsDiscussed, ...(conversationUpdate.newTopics || [])])]
+        }));
+      }
+      
+      // Handle different conversation scenarios
+      if (interviewStatus === 'continue_conversation') {
+        // AI is continuing the conversation naturally
+        speakText(aiResponse.message);
+        setIsProcessing(false);
+        
+      } else if (interviewStatus === 'topic_transition') {
+        // AI is transitioning to a new topic
+        speakText(aiResponse.transitionMessage);
+        setConversationMemory(prev => ({
+          ...prev,
+          currentTopic: aiResponse.newTopic
+        }));
+        setIsProcessing(false);
+        
+      } else if (interviewStatus === 'interview_complete') {
+        // Interview is ending
+        speakText(aiResponse.closingMessage);
+        setTimeout(() => {
+          onInterviewEnd(aiResponse.finalFeedback);
+        }, 3000);
+      }
+    });
+    
+    // Keep the old handler for backward compatibility during transition
     socketRef.current.on('interview:ai-response', (data) => {
       if (data.interviewComplete) {
         onInterviewEnd(data.finalFeedback);
@@ -180,7 +240,7 @@ const VoiceInterview = ({
     }
   }, [isListening, sessionData?.id]);
   
-  // ✨ NEW: Modified stopListening to handle greeting response
+  // ✨ NEW: Enhanced stopListening for continuous conversation
   const stopListening = useCallback(() => {
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
@@ -191,13 +251,13 @@ const VoiceInterview = ({
         if (interviewPhase === 'greeting') {
           // Handle greeting response
           handleGreetingResponse(transcript);
-        } else {
-          // Handle question response (existing logic)
-          processAnswerViaWebSocket(transcript);
+        } else if (interviewPhase === 'questioning') {
+          // NEW: Handle as continuous conversation instead of discrete Q&A
+          handleContinuousConversation(transcript);
         }
       }
     }
-  }, [isListening, transcript, interviewPhase, sessionData?.id]);
+  }, [isListening, transcript, interviewPhase, conversationMemory]);
   
   // Process user's answer via WebSocket for real-time communication
   const processAnswerViaWebSocket = (answer) => {
@@ -258,10 +318,31 @@ const VoiceInterview = ({
       setTimeout(() => {
         setInterviewPhase('questioning');
         setIsWaitingForUserResponse(false);
+        setIsInConversation(true);
         
-        // Set the first question
-        if (jobData?.questions && jobData.questions.length > 0) {
-          onAnswerSubmit && onAnswerSubmit(jobData.questions[0]);
+        // Initialize with a proper conversation starter instead of discrete question
+        setConversationMemory(prev => ({
+          ...prev,
+          currentTopic: 'introduction and background',
+          interviewProgress: 0
+        }));
+        
+        // Send first conversational prompt to backend
+        if (socketRef.current && sessionData?.id) {
+          const initialMemory = {
+            topicsDiscussed: ['introduction'],
+            userResponses: [],
+            currentTopic: 'introduction and background',
+            followUpNeeded: [],
+            interviewProgress: 0
+          };
+          
+          socketRef.current.emit('interview:conversation-turn', {
+            sessionId: sessionData.id,
+            userResponse: "I'm ready to begin the interview",
+            conversationMemory: initialMemory,
+            jobContext: jobData
+          });
         }
         
         setIsProcessing(false);
@@ -272,6 +353,38 @@ const VoiceInterview = ({
       const clarification = "No problem! Take your time. Just let me know when you're ready to start the interview by saying 'I'm ready' or 'let's begin'.";
       speakText(clarification);
       setIsProcessing(false);
+    }
+  };
+
+  // ✨ NEW: Replace discrete answer processing with conversation flow
+  const handleContinuousConversation = (userResponse) => {
+    console.log('🔄 Processing continuous conversation response:', userResponse);
+    
+    // Add to conversation memory
+    const newMemory = {
+      ...conversationMemory,
+      userResponses: [...conversationMemory.userResponses, {
+        response: userResponse,
+        timestamp: new Date(),
+        topic: conversationMemory.currentTopic
+      }],
+      interviewProgress: conversationMemory.interviewProgress + 1
+    };
+    
+    console.log('📝 Updated conversation memory:', newMemory);
+    setConversationMemory(newMemory);
+    
+    // Send to backend for AI conversation processing
+    if (socketRef.current && sessionData?.id) {
+      console.log('📡 Sending conversation turn to backend...');
+      socketRef.current.emit('interview:conversation-turn', {
+        sessionId: sessionData.id,
+        userResponse: userResponse,
+        conversationMemory: newMemory,
+        jobContext: jobData
+      });
+    } else {
+      console.error('❌ Cannot send conversation turn: socket or session not available');
     }
   };
 
@@ -356,17 +469,18 @@ const VoiceInterview = ({
     speakText(questionText);
   };
   
-  // ✨ NEW: Modified useEffect to handle interview phases
-  //const [hasGreetingBeenSpoken, setHasGreetingBeenSpoken] = useState(false);
-
-useEffect(() => {
-  if (interviewPhase === 'greeting') {
-    startInterviewGreeting();
-    //setHasGreetingBeenSpoken(true); // ✅ Prevent double greeting
-  } else if (interviewPhase === 'questioning' && currentQuestion) {
-    speakQuestion(currentQuestion);
-  }
-}, [interviewPhase, currentQuestion]);
+    // ✨ NEW: Modified useEffect to handle interview phases
+  useEffect(() => {
+    if (interviewPhase === 'greeting') {
+      startInterviewGreeting();
+    } else if (interviewPhase === 'questioning' && currentQuestion) {
+      // Start continuous conversation mode
+      if (!isInConversation) {
+        setIsInConversation(true);
+      }
+      speakQuestion(currentQuestion);
+    }
+  }, [interviewPhase, currentQuestion, isInConversation]);
   
   // ✨ NEW: Update interview phase when jobData changes (from parent)
   
@@ -438,11 +552,15 @@ useEffect(() => {
                 <span>•</span>
                 <span className={`px-2 py-1 rounded-full text-xs ${
                   interviewPhase === 'greeting' ? 'bg-blue-600 text-white' :
-                  interviewPhase === 'questioning' ? 'bg-green-600 text-white' :
+                  interviewPhase === 'questioning' ? (
+                    isInConversation ? 'bg-purple-600 text-white' : 'bg-green-600 text-white'
+                  ) :
                   'bg-gray-600 text-white'
                 }`}>
                   {interviewPhase === 'greeting' ? 'Introduction Phase' : 
-                   interviewPhase === 'questioning' ? 'Questioning Phase' : 
+                   interviewPhase === 'questioning' ? (
+                     isInConversation ? 'Continuous Conversation' : 'Questioning Phase'
+                   ) : 
                    'Complete'}
                 </span>
               </div>
@@ -523,7 +641,19 @@ useEffect(() => {
                   </div>
                 )}
                 
-                {/* Transcript Display */}
+                {/* ✨ NEW: Conversation Progress Indicator */}
+                {interviewPhase === 'questioning' && isInConversation && (
+                  <div className="bg-green-600 text-white px-4 py-2 rounded-lg text-center mt-2">
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                      <span className="font-medium">
+                        Current Topic: {conversationMemory.currentTopic} • Progress: {conversationMemory.interviewProgress}/15
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
+                                {/* Transcript Display */}
                 {speechText && (
                   <div className="bg-black bg-opacity-70 text-white px-4 py-3 rounded-lg mt-2">
                     <p className="text-sm">
@@ -546,46 +676,49 @@ useEffect(() => {
         
         {/* Right Side - Question and Code Editor */}
         <div className="w-96 bg-gray-800 flex flex-col">
-          {/* Current Question */}
+          {/* ✨ NEW: Interview Conversation Interface */}
           <div className="p-6 border-b border-gray-700">
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-              <Code className="h-5 w-5 mr-2 text-blue-400" />
-              Current Question
+              <MessageSquare className="h-5 w-5 mr-2 text-blue-400" />
+              Interview Conversation
             </h3>
             
-            {currentQuestion && (
-              <div className="space-y-4">
-                <div className="bg-gray-700 p-4 rounded-lg">
-                  <h4 className="font-medium text-white mb-2">
-                    {currentQuestion.title}
-                  </h4>
-                  <p className="text-gray-300 text-sm leading-relaxed">
-                    {currentQuestion.description}
-                  </p>
-                  
-                  {/* Question Context */}
-                  {currentQuestion.context && (
-                    <div className="mt-3 pt-3 border-t border-gray-600">
-                      <p className="text-xs text-gray-400 mb-1">Context:</p>
-                      <p className="text-xs text-gray-300">{currentQuestion.context}</p>
-                    </div>
-                  )}
-                </div>
+            <div className="space-y-4">
+              <div className="bg-gray-700 p-4 rounded-lg">
+                <h4 className="font-medium text-white mb-2">
+                  Current Topic: {conversationMemory.currentTopic}
+                </h4>
+                <p className="text-gray-300 text-sm">
+                  Progress: {conversationMemory.interviewProgress}/15 conversation turns
+                </p>
                 
-                {/* Code Editor Toggle */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-400">
-                    {showCodeEditor ? 'Code Editor Active' : 'Add code if needed'}
-                  </span>
-                  <button
-                    onClick={() => setShowCodeEditor(!showCodeEditor)}
-                    className="bg-gray-600 hover:bg-gray-500 text-white text-sm px-3 py-1 rounded transition-colors"
-                  >
-                    {showCodeEditor ? 'Hide Editor' : 'Show Code Editor'}
-                  </button>
-                </div>
+                {conversationMemory.topicsDiscussed.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-600">
+                    <p className="text-xs text-gray-400 mb-1">Topics covered:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {conversationMemory.topicsDiscussed.map((topic, idx) => (
+                        <span key={idx} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                          {topic}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+              
+              {/* Code Editor Toggle - Keep this for technical interviews */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">
+                  {showCodeEditor ? 'Code Editor Active' : 'Add code if needed'}
+                </span>
+                <button
+                  onClick={() => setShowCodeEditor(!showCodeEditor)}
+                  className="bg-gray-600 hover:bg-gray-500 text-white text-sm px-3 py-1 rounded transition-colors"
+                >
+                  {showCodeEditor ? 'Hide Editor' : 'Show Code Editor'}
+                </button>
+              </div>
+            </div>
           </div>
           
           {/* Code Editor */}
@@ -702,10 +835,23 @@ useEffect(() => {
               isWaitingForUserResponse ? 
                 'Tell me when you\'re ready to start the interview' : 
                 'AI is introducing the interview...'
-            ) : isListening ? 'Click the red button to stop recording' : 
-             isProcessing ? 'Processing your answer...' : 
-             'Click the microphone to start answering'}
+            ) : interviewPhase === 'questioning' ? (
+              isListening ? 'Click the red button to stop recording' : 
+              isProcessing ? 'AI is analyzing your response...' : 
+              isInConversation ? 'Click the microphone to continue the conversation' :
+              'Click the microphone to start answering'
+            ) : 'Interview complete'}
           </p>
+          
+          {/* ✨ NEW: Conversation Progress Indicator */}
+          {interviewPhase === 'questioning' && (
+            <div className="mt-2 text-xs text-gray-500">
+              <span>Progress: {conversationMemory.interviewProgress} responses</span>
+              {conversationMemory.currentTopic !== 'introduction' && (
+                <span className="ml-3">• Current: {conversationMemory.currentTopic}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
