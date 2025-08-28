@@ -229,6 +229,18 @@ io.on('connection', (socket) => {
     
     console.log(`[Conversation] Queuing turn for session ${sessionId}`);
     
+    // ✨ DEBUG: Enhanced logging for troubleshooting
+    console.log('🔍 DEBUG - Full job context received:', JSON.stringify(jobContext, null, 2));
+    console.log('🔍 DEBUG - Job analysis skills:', JSON.stringify(jobContext?.jobAnalysis?.requiredSkills, null, 2));
+    console.log('🔍 DEBUG - Conversation memory:', JSON.stringify(conversationMemory, null, 2));
+    
+    // Check if job context has the expected structure
+    if (!jobContext?.jobAnalysis?.requiredSkills) {
+      console.warn('⚠️  WARNING: Job context missing required skills structure');
+      console.warn('⚠️  Expected: jobContext.jobAnalysis.requiredSkills');
+      console.warn('⚠️  Received:', jobContext?.jobAnalysis);
+    }
+    
     try {
       const user = userDatabase.get(currentUserEmail);
       const session = user.mockInterviews?.find(s => s.id === sessionId);
@@ -1496,13 +1508,17 @@ async function analyzeJobAndGenerateQuestions(jobDescription, userLevel = 'inter
       return generateFallbackInterviewQuestions(userLevel); // Remove mode parameter
     }
 
-    // ✨ MUCH SHORTER prompt to avoid truncation
+    // ✨ ENHANCED: Structured skills format for better topic selection
     const systemPrompt = `You are an expert interviewer. Analyze the job and create 8-10 interview questions.
 
 Format as JSON:
 {
   "jobAnalysis": {
-    "requiredSkills": ["skill1", "skill2"],
+    "requiredSkills": [
+      {"name": "React", "importance": "high"},
+      {"name": "Node.js", "importance": "high"},
+      {"name": "PostgreSQL", "importance": "medium"}
+    ],
     "experienceLevel": "junior/mid/senior",
     "keyResponsibilities": ["resp1", "resp2"]
   },
@@ -1515,7 +1531,9 @@ Format as JSON:
       "difficulty": "easy"
     }
   ]
-}`;
+}
+
+IMPORTANT: Extract specific technologies from job description. Convert "Frontend frameworks (React/Vue/Angular)" to separate skills: "React", "Vue", "Angular".`;
 
     const userPrompt = `Job: ${jobDescription.substring(0, 500)}
 Level: ${userLevel}
@@ -1544,6 +1562,17 @@ Create 8 interview questions covering technical and behavioral aspects.`;
     
     try {
       const parsedResponse = JSON.parse(cleanContent);
+      
+      // ✨ FIXED: Convert string skills to objects if needed
+      if (parsedResponse.jobAnalysis?.requiredSkills) {
+        const skills = parsedResponse.jobAnalysis.requiredSkills;
+        if (skills.length > 0 && typeof skills[0] === 'string') {
+          console.log('🔄 Converting string skills to objects:', skills);
+          parsedResponse.jobAnalysis.requiredSkills = extractSpecificSkills(skills);
+          console.log('✅ Converted skills:', parsedResponse.jobAnalysis.requiredSkills);
+        }
+      }
+      
       return parsedResponse;
     } catch (parseError) {
       console.error('Failed to parse job analysis:', parseError);
@@ -1586,7 +1615,11 @@ function generateFallbackInterviewQuestions(userLevel) {
 
   return {
     jobAnalysis: {
-      requiredSkills: ['General programming', 'Problem solving', 'Team collaboration'],
+      requiredSkills: [
+        { name: 'General programming', importance: 'high' },
+        { name: 'Problem solving', importance: 'high' },
+        { name: 'Team collaboration', importance: 'medium' }
+      ],
       experienceLevel: userLevel,
       keyResponsibilities: ['Technical implementation', 'Team collaboration', 'Problem solving'],
       companyCulture: 'Collaborative and growth-oriented',
@@ -1936,85 +1969,66 @@ async function generateWelcomeMessage(topic, skillLevel, user) {
   }
 }
 
-// ✨ FIXED: AI conversation processing with strict JSON enforcement
+// ✨ ENHANCED: Intelligent interview with job-specific progression
 async function processConversationTurn(session, userResponse, conversationMemory, jobContext) {
   try {
     if (!process.env.OPENAI_API_KEY) {
       return generateFallbackConversationResponse(userResponse, conversationMemory);
     }
 
-    // ✨ NEW: Smart topic transition logic
-    const isTopicCovered = (userResponse, currentTopic) => {
-      const topicKeywords = getTopicKeywords(conversationMemory.currentTopic);
-      const hasSubstantialAnswer = userResponse.length > 50 && 
-        topicKeywords.some(keyword => userResponse.toLowerCase().includes(keyword));
-      return hasSubstantialAnswer;
-    };
-
-    const getNextTopic = (jobContext, conversationMemory) => {
-      if (!jobContext?.jobAnalysis?.requiredSkills) return 'behavioral';
-      
-      const requiredSkills = jobContext.jobAnalysis.requiredSkills;
-      const coveredTopics = conversationMemory.topicsDiscussed;
-      
-      // Find next uncovered important skill
-      for (const skill of requiredSkills) {
-        if (!coveredTopics.includes(skill.name.toLowerCase())) {
-          return skill.name.toLowerCase();
-        }
-      }
-      return 'behavioral'; // Fallback to behavioral questions
-    };
-
-    // ✨ NEW: Determine current phase and next action
-    const currentPhase = conversationMemory.currentPhase || 'introduction';
-    const shouldTransition = isTopicCovered(userResponse, conversationMemory.currentTopic);
-    const nextTopic = shouldTransition ? getNextTopic(jobContext, conversationMemory) : conversationMemory.currentTopic;
+    // Determine if we should transition topics
+    const shouldTransition = shouldTransitionTopic(conversationMemory, userResponse);
+    const nextTopic = shouldTransition ? 
+      getNextTechnicalTopic(jobContext, conversationMemory) : 
+      conversationMemory.currentTopic;
     
-    // ✨ NEW: Enhanced system prompt with structure
-    const jobSkills = jobContext?.jobAnalysis?.requiredSkills?.map(s => s.name).join(', ') || 'technical skills';
-    const topSkills = jobContext?.jobAnalysis?.requiredSkills?.slice(0, 5).map(s => s.name).join(', ') || 'technical skills';
-    const responseType = shouldTransition ? 'transition' : 'followup';
-    const nextPhase = shouldTransition ? getNextPhase(currentPhase) : currentPhase;
-    const newTopics = shouldTransition ? [nextTopic] : [];
+    // Extract job-specific information dynamically
+    const jobTitle = jobContext?.jobTitle || 'this role';
+    const jobSkills = jobContext?.jobAnalysis?.requiredSkills?.map(s => s.name || s).join(', ') || 'technical skills';
+    const topPrioritySkills = jobContext?.jobAnalysis?.requiredSkills?.slice(0, 3).map(s => s.name || s).join(', ') || 'core skills';
     
-    const systemPrompt = `You are conducting a structured technical interview. 
+    console.log(`🎯 Interview context: ${jobTitle}, focusing on: ${topPrioritySkills}`);
+    console.log(`📍 Current topic: ${conversationMemory.currentTopic}, Next: ${nextTopic}, Should transition: ${shouldTransition}`);
 
-CURRENT PHASE: ${currentPhase}
-CURRENT TOPIC: ${conversationMemory.currentTopic}
-JOB REQUIREMENTS: ${jobSkills}
-CONVERSATION PROGRESS: ${conversationMemory.interviewProgress}/15 turns
+    const systemPrompt = `You are conducting a technical interview for ${jobTitle}.
+
+CONTEXT:
+- Job requires: ${jobSkills}
+- Current topic: ${conversationMemory.currentTopic}
+- Progress: ${conversationMemory.interviewProgress}/15 turns
+- Should transition: ${shouldTransition ? 'YES - move to next topic' : 'NO - continue current topic'}
+- Next topic: ${nextTopic}
 
 INSTRUCTIONS:
-- If user gave substantial answer about current topic, move to next technical topic
-- If user says "I don't know" or gives brief answer, ask 1 follow-up then move on
-- For this job, you must cover: ${topSkills}
-- Ask coding questions for: Python, React, Node.js, algorithms
-- Keep responses under 30 words
-- Progress interview, don't get stuck on one topic
-- ${shouldTransition ? 'TRANSITION to next topic now' : 'Ask follow-up question'}
+${shouldTransition ? 
+  `TRANSITION NOW to "${nextTopic}". Say: "Let's talk about ${nextTopic}. [Ask specific question about this topic]"` :
+  `CONTINUE with "${conversationMemory.currentTopic}". Ask a follow-up question to go deeper.`
+}
+
+For ${jobTitle}, prioritize questions about: ${topPrioritySkills}
+
+Keep responses under 30 words. Be conversational and natural.
 
 RESPOND WITH JSON:
 {
   "aiResponse": {
-    "message": "next question or transition",
-    "type": "${responseType}"
+    "message": "your interview question or transition",
+    "type": "${shouldTransition ? 'transition' : 'followup'}"
   },
   "conversationUpdate": {
     "currentTopic": "${nextTopic}",
-    "currentPhase": "${nextPhase}",
-    "shouldTransition": ${shouldTransition},
-    "newTopics": ${JSON.stringify(newTopics)},
+    "newTopics": ${shouldTransition ? `["${nextTopic}"]` : '[]'},
     "followUpNeeded": []
   },
   "interviewStatus": "continue_conversation"
 }`;
 
-    const userPrompt = `Candidate: "${userResponse.substring(0, 80)}" 
-Progress: ${conversationMemory.interviewProgress}/15
-Current Topic: ${conversationMemory.currentTopic}
-Phase: ${currentPhase}
-${shouldTransition ? 'TRANSITION to next topic' : 'Ask follow-up question'}`;
+    const userPrompt = `Candidate just said: "${userResponse.substring(0, 100)}"
+
+${shouldTransition ? 
+  `Now transition to asking about: ${nextTopic}` : 
+  `Ask a follow-up question about: ${conversationMemory.currentTopic}`
+}`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -2022,18 +2036,16 @@ ${shouldTransition ? 'TRANSITION to next topic' : 'Ask follow-up question'}`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.1,
-      max_tokens: 150,
+      temperature: 0.3,
+      max_tokens: 200,
       response_format: { type: "json_object" }
     });
 
     const content = response.choices[0].message.content.trim();
     console.log('Raw OpenAI response:', content);
     
-    // ✨ IMPROVED: Better JSON extraction
+    // Clean and parse JSON
     let jsonContent = content;
-    
-    // Remove any markdown formatting
     if (jsonContent.includes('```')) {
       const jsonMatch = jsonContent.match(/```(?:json)?\s*(\{.*?\})\s*```/s);
       if (jsonMatch) {
@@ -2041,21 +2053,16 @@ ${shouldTransition ? 'TRANSITION to next topic' : 'Ask follow-up question'}`;
       }
     }
     
-    // Find JSON object boundaries
     const firstBrace = jsonContent.indexOf('{');
     const lastBrace = jsonContent.lastIndexOf('}');
     
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
       jsonContent = jsonContent.substring(firstBrace, lastBrace + 1);
-    } else {
-      throw new Error('No valid JSON structure found');
     }
     
     console.log('Extracted JSON:', jsonContent);
-    
     const parsed = JSON.parse(jsonContent);
     
-    // ✨ VALIDATION: Ensure required fields exist
     if (!parsed.aiResponse || !parsed.aiResponse.message) {
       throw new Error('Invalid response structure');
     }
@@ -2093,7 +2100,55 @@ function generateFallbackConversationResponse(userResponse, conversationMemory) 
   };
 }
 
-// ✨ NEW: Helper functions for interview structure
+// ✨ FIXED: Enhanced topic selection with proper skill handling
+const getNextTechnicalTopic = (jobContext, conversationMemory) => {
+  const requiredSkills = jobContext?.jobAnalysis?.requiredSkills || [];
+  const coveredTopics = conversationMemory.topicsDiscussed || [];
+  
+  console.log(`🔍 Finding next topic. Required skills:`, requiredSkills.map(s => s.name || s));
+  console.log(`📋 Already covered:`, coveredTopics);
+  
+  // Find the most important uncovered skill
+  for (const skill of requiredSkills) {
+    const skillName = (skill.name || skill).toLowerCase();
+    
+    const isAlreadyCovered = coveredTopics.some(topic => 
+      topic.toLowerCase().includes(skillName) || 
+      skillName.includes(topic.toLowerCase())
+    );
+    
+    if (!isAlreadyCovered) {
+      console.log(`🎯 Next topic selected: ${skillName}`);
+      return skillName;
+    }
+  }
+  
+  // Fallback progression when all skills covered
+  const progressionMap = {
+    'introduction': 'technical_experience',
+    'technical_experience': 'problem_solving',
+    'problem_solving': 'behavioral', 
+    'behavioral': 'interview_complete'
+  };
+  
+  const fallbackTopic = progressionMap[conversationMemory.currentTopic] || 'interview_complete';
+  console.log(`🔄 Using fallback progression: ${fallbackTopic}`);
+  return fallbackTopic;
+};
+
+// Helper function to determine if we should transition topics
+const shouldTransitionTopic = (conversationMemory, userResponse) => {
+  const currentTopicTurns = conversationMemory.userResponses.filter(
+    r => r.topic === conversationMemory.currentTopic
+  ).length;
+  
+  const hasSubstantialResponse = userResponse.length > 30;
+  const maxTurnsPerTopic = 3;
+  
+  return currentTopicTurns >= maxTurnsPerTopic || 
+         (currentTopicTurns >= 2 && hasSubstantialResponse);
+};
+
 function getTopicKeywords(topic) {
   const keywordMap = {
     'python': ['python', 'code', 'function', 'algorithm', 'data', 'analysis'],
@@ -2113,6 +2168,37 @@ function getNextPhase(currentPhase) {
   const phaseOrder = ['introduction', 'technical_core', 'fullstack', 'integration', 'behavioral', 'closing'];
   const currentIndex = phaseOrder.indexOf(currentPhase);
   return currentIndex < phaseOrder.length - 1 ? phaseOrder[currentIndex + 1] : 'closing';
+}
+
+// ✨ NEW: Skill extraction and normalization function
+function extractSpecificSkills(skillStrings) {
+  const extractedSkills = [];
+  
+  skillStrings.forEach(skillString => {
+    // Extract technologies mentioned in parentheses
+    const parenthesesMatch = skillString.match(/\(([^)]+)\)/);
+    if (parenthesesMatch) {
+      const techList = parenthesesMatch[1];
+      const techs = techList.split(/[\/,]/);
+      techs.forEach(tech => {
+        const cleanTech = tech.trim().toLowerCase();
+        if (cleanTech) {
+          extractedSkills.push({
+            name: cleanTech,
+            importance: skillString.toLowerCase().includes('experience') ? 'high' : 'medium'
+          });
+        }
+      });
+    } else {
+      // Handle skills without parentheses
+      extractedSkills.push({
+        name: skillString.toLowerCase().trim(),
+        importance: 'medium'
+      });
+    }
+  });
+  
+  return extractedSkills;
 }
 
 // ✨ NEW: Missing generateFinalFeedback function
@@ -2176,13 +2262,17 @@ Please provide:
 Format the response as JSON with this structure:
 {
   "requiredSkills": [
-    {"name": "skill_name", "level": 7, "importance": "high", "description": "why this skill is needed"}
+    {"name": "React", "level": 7, "importance": "high", "description": "Core frontend framework for the role"},
+    {"name": "Node.js", "level": 6, "importance": "high", "description": "Backend development requirement"},
+    {"name": "PostgreSQL", "level": 5, "importance": "medium", "description": "Database management needed"}
   ],
   "experienceLevel": "Junior",
   "estimatedSalary": "$60k - $80k",
   "learningObjectives": ["objective1", "objective2"],
   "learningApproach": "description of how to approach learning"
-}`;
+}
+
+IMPORTANT: Extract specific technologies from job description. Convert "Frontend frameworks (React/Vue/Angular)" to separate skills: "React", "Vue", "Angular".`;
 
     // ✨ FIXED: Use openai instance instead of fetch
     const response = await openai.chat.completions.create({

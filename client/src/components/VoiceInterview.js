@@ -93,19 +93,29 @@ const VoiceInterview = ({
       console.error('WebSocket connection error:', error);
     });
     
-    // ✨ NEW: Listen for conversation flow responses
+    // ✨ ENHANCED: Listen for structured conversation responses
     socketRef.current.on('interview:conversation-response', (data) => {
       console.log('Received conversation response:', data);
       
       const { aiResponse, conversationUpdate, interviewStatus } = data;
       
-      // Update conversation memory with AI's response and new context
+      // Enhanced conversation memory update with structured progression
       if (conversationUpdate) {
-        setConversationMemory(prev => ({
-          ...prev,
-          ...conversationUpdate,
-          topicsDiscussed: [...new Set([...prev.topicsDiscussed, ...(conversationUpdate.newTopics || [])])]
-        }));
+        setConversationMemory(prev => {
+          const updatedMemory = {
+            ...prev,
+            ...conversationUpdate,
+            topicsDiscussed: [...new Set([...prev.topicsDiscussed, ...(conversationUpdate.newTopics || [])])],
+            lastTopicChange: Date.now()
+          };
+          
+          // Log topic transition for debugging
+          if (conversationUpdate.currentTopic !== prev.currentTopic) {
+            console.log(`🔄 Topic transition: ${prev.currentTopic} → ${conversationUpdate.currentTopic}`);
+          }
+          
+          return updatedMemory;
+        });
       }
       
       // Handle different conversation scenarios
@@ -114,18 +124,20 @@ const VoiceInterview = ({
         speakText(aiResponse.message);
         setIsProcessing(false);
         
+        // Update UI to show current topic and progress
+        console.log(`💬 AI response: ${aiResponse.message} (${aiResponse.type})`);
+        
       } else if (interviewStatus === 'topic_transition') {
         // AI is transitioning to a new topic
-        speakText(aiResponse.transitionMessage);
-        setConversationMemory(prev => ({
-          ...prev,
-          currentTopic: aiResponse.newTopic
-        }));
+        speakText(aiResponse.message);
         setIsProcessing(false);
+        
+        // Show topic transition in UI
+        console.log(`🔄 Topic transition to: ${conversationUpdate.currentTopic}`);
         
       } else if (interviewStatus === 'interview_complete') {
         // Interview is ending
-        speakText(aiResponse.closingMessage);
+        speakText(aiResponse.message || 'Thank you for the interview!');
         setTimeout(() => {
           onInterviewEnd(aiResponse.finalFeedback);
         }, 3000);
@@ -338,14 +350,23 @@ const VoiceInterview = ({
             userResponses: [],
             currentTopic: 'introduction and background',
             followUpNeeded: [],
-            interviewProgress: 0
+            interviewProgress: 0,
+            currentPhase: 'introduction',
+            topicCoverage: {},
+            phaseStartTime: Date.now(),
+            lastTopicChange: Date.now()
           };
+          
+          // ✅ FIX: Use helper function for consistent job context structure
+          const jobContext = getStructuredJobContext();
+          
+          console.log('📋 Initial job context:', JSON.stringify(jobContext, null, 2));
           
           socketRef.current.emit('interview:conversation-turn', {
             sessionId: sessionData.id,
             userResponse: "I'm ready to begin the interview",
             conversationMemory: initialMemory,
-            jobContext: jobData
+            jobContext: jobContext
           });
         }
         
@@ -360,23 +381,34 @@ const VoiceInterview = ({
     }
   };
 
-  // ✨ NEW: Replace discrete answer processing with conversation flow
+  // ✨ FIXED: Structured conversation flow with proper job context
   const handleContinuousConversation = (userResponse) => {
     console.log('🔄 Processing continuous conversation response:', userResponse);
     
-    // Add to conversation memory
+    // Enhanced conversation memory with topic tracking
     const newMemory = {
       ...conversationMemory,
       userResponses: [...conversationMemory.userResponses, {
         response: userResponse,
         timestamp: new Date(),
-        topic: conversationMemory.currentTopic
+        topic: conversationMemory.currentTopic,
+        isSubstantial: userResponse.length > 30,
+        containsKeywords: extractKeywords(userResponse, conversationMemory.currentTopic)
       }],
-      interviewProgress: conversationMemory.interviewProgress + 1
+      interviewProgress: conversationMemory.interviewProgress + 1,
+      topicCoverage: {
+        ...conversationMemory.topicCoverage,
+        [conversationMemory.currentTopic]: true
+      }
     };
     
     console.log('📝 Updated conversation memory:', newMemory);
     setConversationMemory(newMemory);
+    
+    // ✅ FIX: Use helper function for consistent job context structure
+    const jobContext = getStructuredJobContext();
+    
+    console.log('📋 Job context being sent:', JSON.stringify(jobContext, null, 2));
     
     // Send to backend for AI conversation processing
     if (socketRef.current && sessionData?.id) {
@@ -385,11 +417,51 @@ const VoiceInterview = ({
         sessionId: sessionData.id,
         userResponse: userResponse,
         conversationMemory: newMemory,
-        jobContext: jobData
+        jobContext: jobContext  // ✅ Now properly structured
       });
     } else {
       console.error('❌ Cannot send conversation turn: socket or session not available');
     }
+  };
+
+  // ✨ NEW: Helper function to extract keywords from user responses
+  const extractKeywords = (response, topic) => {
+    const topicKeywords = getTopicKeywords(topic);
+    return topicKeywords.filter(keyword => 
+      response.toLowerCase().includes(keyword.toLowerCase())
+    );
+  };
+
+  // ✨ NEW: Helper function to get topic keywords
+  const getTopicKeywords = (topic) => {
+    const keywordMap = {
+      'python': ['python', 'code', 'function', 'algorithm', 'data', 'analysis'],
+      'javascript': ['javascript', 'js', 'react', 'node', 'frontend', 'backend'],
+      'algorithms': ['algorithm', 'complexity', 'sort', 'search', 'optimization'],
+      'data structures': ['array', 'list', 'tree', 'graph', 'hash', 'stack'],
+      'machine learning': ['ml', 'ai', 'model', 'training', 'prediction', 'neural'],
+      'system design': ['architecture', 'scalability', 'database', 'api', 'microservices'],
+      'background': ['experience', 'education', 'previous', 'worked', 'studied'],
+      'behavioral': ['team', 'challenge', 'conflict', 'leadership', 'collaboration']
+    };
+    
+    return keywordMap[topic.toLowerCase()] || [topic.toLowerCase()];
+  };
+
+  // ✨ NEW: Helper function to structure job context properly
+  const getStructuredJobContext = () => {
+    return {
+      jobTitle: jobData?.jobTitle || 'Technical Role',
+      company: jobData?.company || 'Company', 
+      jobAnalysis: jobData?.analysis?.jobAnalysis || jobData?.jobAnalysis || {
+        requiredSkills: [
+          { name: 'Technical Skills', importance: 'high' },
+          { name: 'Problem Solving', importance: 'high' },
+          { name: 'Communication', importance: 'medium' }
+        ],
+        experienceLevel: 'intermediate'
+      }
+    };
   };
 
   // Fallback HTTP-based answer processing
@@ -485,6 +557,12 @@ const VoiceInterview = ({
       speakQuestion(currentQuestion);
     }
   }, [interviewPhase, currentQuestion, isInConversation]);
+  
+  // ✨ NEW: Debug logging to see job data structure
+  useEffect(() => {
+    console.log('🔍 VoiceInterview jobData received:', JSON.stringify(jobData, null, 2));
+    console.log('🔍 VoiceInterview sessionData received:', JSON.stringify(sessionData, null, 2));
+  }, [jobData, sessionData]);
   
   // ✨ NEW: Update interview phase when jobData changes (from parent)
   
@@ -696,18 +774,33 @@ const VoiceInterview = ({
                   Progress: {conversationMemory.interviewProgress}/15 conversation turns
                 </p>
                 
-                {conversationMemory.topicsDiscussed.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-600">
-                    <p className="text-xs text-gray-400 mb-1">Topics covered:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {conversationMemory.topicsDiscussed.map((topic, idx) => (
-                        <span key={idx} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                          {topic}
-                        </span>
-                      ))}
-                    </div>
+                {/* ✨ NEW: Enhanced topic coverage display */}
+                <div className="mt-3 pt-3 border-t border-gray-600">
+                  <p className="text-xs text-gray-400 mb-1">Topics covered:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {conversationMemory.topicsDiscussed.map((topic, idx) => (
+                      <span key={idx} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                        {topic}
+                      </span>
+                    ))}
                   </div>
-                )}
+                  
+                  {/* ✨ NEW: Show topic coverage status */}
+                  {conversationMemory.topicCoverage && Object.keys(conversationMemory.topicCoverage).length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-400 mb-1">Coverage:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(conversationMemory.topicCoverage).map(([topic, covered]) => (
+                          <span key={topic} className={`text-xs px-2 py-1 rounded ${
+                            covered ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {topic}: {covered ? '✓' : '○'}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               
               {/* Code Editor Toggle - Keep this for technical interviews */}
