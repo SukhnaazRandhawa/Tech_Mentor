@@ -1943,31 +1943,78 @@ async function processConversationTurn(session, userResponse, conversationMemory
       return generateFallbackConversationResponse(userResponse, conversationMemory);
     }
 
-    // Check if we should transition topics
-    const shouldTransition = conversationMemory.interviewProgress > 3 && 
-                            conversationMemory.currentTopic === 'introduction and background';
-    
-    // ✨ FIXED: More explicit JSON instruction
-    const systemPrompt = `You are an AI interviewer. CRITICAL: Respond with ONLY valid JSON format:
+    // ✨ NEW: Smart topic transition logic
+    const isTopicCovered = (userResponse, currentTopic) => {
+      const topicKeywords = getTopicKeywords(conversationMemory.currentTopic);
+      const hasSubstantialAnswer = userResponse.length > 50 && 
+        topicKeywords.some(keyword => userResponse.toLowerCase().includes(keyword));
+      return hasSubstantialAnswer;
+    };
 
+    const getNextTopic = (jobContext, conversationMemory) => {
+      if (!jobContext?.jobAnalysis?.requiredSkills) return 'behavioral';
+      
+      const requiredSkills = jobContext.jobAnalysis.requiredSkills;
+      const coveredTopics = conversationMemory.topicsDiscussed;
+      
+      // Find next uncovered important skill
+      for (const skill of requiredSkills) {
+        if (!coveredTopics.includes(skill.name.toLowerCase())) {
+          return skill.name.toLowerCase();
+        }
+      }
+      return 'behavioral'; // Fallback to behavioral questions
+    };
+
+    // ✨ NEW: Determine current phase and next action
+    const currentPhase = conversationMemory.currentPhase || 'introduction';
+    const shouldTransition = isTopicCovered(userResponse, conversationMemory.currentTopic);
+    const nextTopic = shouldTransition ? getNextTopic(jobContext, conversationMemory) : conversationMemory.currentTopic;
+    
+    // ✨ NEW: Enhanced system prompt with structure
+    const jobSkills = jobContext?.jobAnalysis?.requiredSkills?.map(s => s.name).join(', ') || 'technical skills';
+    const topSkills = jobContext?.jobAnalysis?.requiredSkills?.slice(0, 5).map(s => s.name).join(', ') || 'technical skills';
+    const responseType = shouldTransition ? 'transition' : 'followup';
+    const nextPhase = shouldTransition ? getNextPhase(currentPhase) : currentPhase;
+    const newTopics = shouldTransition ? [nextTopic] : [];
+    
+    const systemPrompt = `You are conducting a structured technical interview. 
+
+CURRENT PHASE: ${currentPhase}
+CURRENT TOPIC: ${conversationMemory.currentTopic}
+JOB REQUIREMENTS: ${jobSkills}
+CONVERSATION PROGRESS: ${conversationMemory.interviewProgress}/15 turns
+
+INSTRUCTIONS:
+- If user gave substantial answer about current topic, move to next technical topic
+- If user says "I don't know" or gives brief answer, ask 1 follow-up then move on
+- For this job, you must cover: ${topSkills}
+- Ask coding questions for: Python, React, Node.js, algorithms
+- Keep responses under 30 words
+- Progress interview, don't get stuck on one topic
+- ${shouldTransition ? 'TRANSITION to next topic now' : 'Ask follow-up question'}
+
+RESPOND WITH JSON:
 {
   "aiResponse": {
-    "message": "brief interviewer response",
-    "type": "followup"
+    "message": "next question or transition",
+    "type": "${responseType}"
   },
   "conversationUpdate": {
-    "currentTopic": "${conversationMemory.currentTopic}",
-    "newTopics": [],
+    "currentTopic": "${nextTopic}",
+    "currentPhase": "${nextPhase}",
+    "shouldTransition": ${shouldTransition},
+    "newTopics": ${JSON.stringify(newTopics)},
     "followUpNeeded": []
   },
   "interviewStatus": "continue_conversation"
-}
+}`;
 
-Rules: Keep message under 25 words. No text outside JSON. Use double quotes only.`;
-
-    const userPrompt = `Candidate: "${userResponse.substring(0, 60)}" 
-Progress: ${conversationMemory.interviewProgress}
-Respond with JSON only.`;
+    const userPrompt = `Candidate: "${userResponse.substring(0, 80)}" 
+Progress: ${conversationMemory.interviewProgress}/15
+Current Topic: ${conversationMemory.currentTopic}
+Phase: ${currentPhase}
+${shouldTransition ? 'TRANSITION to next topic' : 'Ask follow-up question'}`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -1976,8 +2023,8 @@ Respond with JSON only.`;
         { role: "user", content: userPrompt }
       ],
       temperature: 0.1,
-      max_tokens: 120,    // ✨ FIXED: Even smaller for better JSON compliance
-      response_format: { type: "json_object" }  // ✨ NEW: Force JSON response
+      max_tokens: 150,
+      response_format: { type: "json_object" }
     });
 
     const content = response.choices[0].message.content.trim();
@@ -2044,6 +2091,28 @@ function generateFallbackConversationResponse(userResponse, conversationMemory) 
     },
     interviewStatus: "continue_conversation"
   };
+}
+
+// ✨ NEW: Helper functions for interview structure
+function getTopicKeywords(topic) {
+  const keywordMap = {
+    'python': ['python', 'code', 'function', 'algorithm', 'data', 'analysis'],
+    'javascript': ['javascript', 'js', 'react', 'node', 'frontend', 'backend'],
+    'algorithms': ['algorithm', 'complexity', 'sort', 'search', 'optimization'],
+    'data structures': ['array', 'list', 'tree', 'graph', 'hash', 'stack'],
+    'machine learning': ['ml', 'ai', 'model', 'training', 'prediction', 'neural'],
+    'system design': ['architecture', 'scalability', 'database', 'api', 'microservices'],
+    'background': ['experience', 'education', 'previous', 'worked', 'studied'],
+    'behavioral': ['team', 'challenge', 'conflict', 'leadership', 'collaboration']
+  };
+  
+  return keywordMap[topic.toLowerCase()] || [topic.toLowerCase()];
+}
+
+function getNextPhase(currentPhase) {
+  const phaseOrder = ['introduction', 'technical_core', 'fullstack', 'integration', 'behavioral', 'closing'];
+  const currentIndex = phaseOrder.indexOf(currentPhase);
+  return currentIndex < phaseOrder.length - 1 ? phaseOrder[currentIndex + 1] : 'closing';
 }
 
 // ✨ NEW: Missing generateFinalFeedback function

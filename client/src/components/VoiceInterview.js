@@ -32,13 +32,17 @@ const VoiceInterview = ({
   const [interviewPhase, setInterviewPhase] = useState('greeting'); // greeting, questioning, complete
   const [isWaitingForUserResponse, setIsWaitingForUserResponse] = useState(false);
   
-  // ✨ NEW: Conversation memory and continuous flow state
+  // ✨ ENHANCED: Structured interview phases and memory
   const [conversationMemory, setConversationMemory] = useState({
     topicsDiscussed: [],
     userResponses: [],
     currentTopic: 'introduction',
     followUpNeeded: [],
-    interviewProgress: 0
+    interviewProgress: 0,
+    currentPhase: 'introduction',
+    topicCoverage: {},
+    phaseStartTime: Date.now(),
+    lastTopicChange: Date.now()
   });
   
   const [isInConversation, setIsInConversation] = useState(false);
