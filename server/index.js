@@ -1982,6 +1982,29 @@ async function processConversationTurn(session, userResponse, conversationMemory
       getNextTechnicalTopic(jobContext, conversationMemory) : 
       conversationMemory.currentTopic;
     
+    // ✅ FIXED: Handle interview completion signal
+    if (nextTopic === 'COMPLETE_INTERVIEW') {
+      console.log(`🎉 Interview completion triggered`);
+      console.log(`📊 Completion stats: ${conversationMemory.interviewProgress} responses, ${conversationMemory.topicsDiscussed.length} topics covered`);
+      return {
+        aiResponse: {
+          message: "Thank you for your time today. That completes our interview. I'll provide you with detailed feedback in just a moment.",
+          type: "completion"
+        },
+        conversationUpdate: {
+          currentTopic: 'interview_complete',
+          newTopics: [],
+          followUpNeeded: []
+        },
+        interviewStatus: "interview_complete" // This will trigger the frontend to end
+      };
+    }
+    
+    // Log the topic selection decision
+    if (nextTopic === 'wrap_up_questions') {
+      console.log(`🔄 Wrap-up phase: ${conversationMemory.interviewProgress} responses, continuing with behavioral/closing questions`);
+    }
+    
     // Extract job-specific information dynamically
     const jobTitle = jobContext?.jobTitle || 'this role';
     
@@ -2014,7 +2037,10 @@ CONTEXT:
 
 INSTRUCTIONS:
 ${shouldTransition ? 
-  `TRANSITION NOW to "${nextTopic}". Say: "Let's talk about ${nextTopic}. [Ask specific question about this topic]"` :
+  (nextTopic === 'wrap_up_questions' ? 
+    `TRANSITION to wrap-up phase. Ask behavioral or closing questions like: "What challenges have you faced in your career?" or "What questions do you have about the role?"` :
+    `TRANSITION NOW to "${nextTopic}". Say: "Let's talk about ${nextTopic}. [Ask specific question about this topic]"`
+  ) :
   `CONTINUE with "${conversationMemory.currentTopic}". Ask a follow-up question to go deeper.`
 }
 
@@ -2039,7 +2065,10 @@ RESPOND WITH JSON:
     const userPrompt = `Candidate just said: "${userResponse.substring(0, 100)}"
 
 ${shouldTransition ? 
-  `Now transition to asking about: ${nextTopic}` : 
+  (nextTopic === 'wrap_up_questions' ? 
+    `Now transition to wrap-up questions. Ask behavioral or closing questions to naturally conclude the interview.` :
+    `Now transition to asking about: ${nextTopic}`
+  ) : 
   `Ask a follow-up question about: ${conversationMemory.currentTopic}`
 }`;
 
@@ -2113,7 +2142,7 @@ function generateFallbackConversationResponse(userResponse, conversationMemory) 
   };
 }
 
-// ✨ FIXED: Enhanced topic selection with proper skill handling
+// ✨ FIXED: Enhanced topic selection with proper completion handling
 const getNextTechnicalTopic = (jobContext, conversationMemory) => {
   const requiredSkills = jobContext?.jobAnalysis?.requiredSkills || [];
   const coveredTopics = conversationMemory.topicsDiscussed || [];
@@ -2136,17 +2165,22 @@ const getNextTechnicalTopic = (jobContext, conversationMemory) => {
     }
   }
   
-  // Fallback progression when all skills covered
-  const progressionMap = {
-    'introduction': 'technical_experience',
-    'technical_experience': 'problem_solving',
-    'problem_solving': 'behavioral', 
-    'behavioral': 'interview_complete'
-  };
+  // ✅ FIXED: When all skills are covered, check conversation quality
+  const totalResponses = conversationMemory.interviewProgress || 0;
+  const averageResponsesPerTopic = totalResponses / Math.max(coveredTopics.length, 1);
   
-  const fallbackTopic = progressionMap[conversationMemory.currentTopic] || 'interview_complete';
-  console.log(`🔄 Using fallback progression: ${fallbackTopic}`);
-  return fallbackTopic;
+  // Dynamic completion criteria based on job complexity and response quality
+  const minimumResponses = Math.max(8, requiredSkills.length * 2); // At least 8 responses, or 2 per skill
+  const hasAdequateCoverage = averageResponsesPerTopic >= 2; // At least 2 substantial responses per topic
+  
+  if (totalResponses >= minimumResponses && hasAdequateCoverage) {
+    console.log(`🏁 Interview naturally complete: ${totalResponses} responses, ${averageResponsesPerTopic.toFixed(1)} avg per topic`);
+    return 'COMPLETE_INTERVIEW'; // Use a special completion signal
+  }
+  
+  // Continue with wrap-up questions if coverage isn't sufficient
+  console.log(`🔄 Continuing with wrap-up questions (${totalResponses} responses, need deeper coverage)`);
+  return 'wrap_up_questions';
 };
 
 // Helper function to determine if we should transition topics
