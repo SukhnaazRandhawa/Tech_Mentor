@@ -1984,6 +1984,19 @@ async function processConversationTurn(session, userResponse, conversationMemory
     
     // Extract job-specific information dynamically
     const jobTitle = jobContext?.jobTitle || 'this role';
+    
+    // Check if we have valid job analysis
+    if (!jobContext?.jobAnalysis?.requiredSkills) {
+      console.log('⚠️  No job analysis provided, using fallback skills');
+      // Generate fallback skills based on common technical roles
+      const fallbackSkills = [
+        { name: 'Technical Skills', importance: 'high' },
+        { name: 'Problem Solving', importance: 'high' },
+        { name: 'Communication', importance: 'medium' }
+      ];
+      jobContext.jobAnalysis = { requiredSkills: fallbackSkills };
+    }
+    
     const jobSkills = jobContext?.jobAnalysis?.requiredSkills?.map(s => s.name || s).join(', ') || 'technical skills';
     const topPrioritySkills = jobContext?.jobAnalysis?.requiredSkills?.slice(0, 3).map(s => s.name || s).join(', ') || 'core skills';
     

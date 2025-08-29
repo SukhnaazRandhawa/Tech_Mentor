@@ -357,8 +357,16 @@ const VoiceInterview = ({
             lastTopicChange: Date.now()
           };
           
-          // ✅ FIX: Use helper function for consistent job context structure
-          const jobContext = getStructuredJobContext();
+          // ✅ CORRECTED: Use the actual job analysis from the session data
+          const jobContext = {
+            jobTitle: jobData?.jobTitle || sessionData?.jobTitle || 'Technical Role',
+            company: jobData?.company || sessionData?.company || 'Company',
+            // Try multiple paths to find the correct job analysis
+            jobAnalysis: sessionData?.jobAnalysis || // From backend session
+                         jobData?.analysis?.jobAnalysis || // From frontend analysis
+                         jobData?.jobAnalysis || // Direct path
+                         null // Let backend handle fallback
+          };
           
           console.log('📋 Initial job context:', JSON.stringify(jobContext, null, 2));
           
@@ -381,11 +389,10 @@ const VoiceInterview = ({
     }
   };
 
-  // ✨ FIXED: Structured conversation flow with proper job context
+  // ✨ CORRECTED: Use actual job analysis instead of fallbacks
   const handleContinuousConversation = (userResponse) => {
     console.log('🔄 Processing continuous conversation response:', userResponse);
     
-    // Enhanced conversation memory with topic tracking
     const newMemory = {
       ...conversationMemory,
       userResponses: [...conversationMemory.userResponses, {
@@ -405,19 +412,26 @@ const VoiceInterview = ({
     console.log('📝 Updated conversation memory:', newMemory);
     setConversationMemory(newMemory);
     
-    // ✅ FIX: Use helper function for consistent job context structure
-    const jobContext = getStructuredJobContext();
+    // ✅ CORRECTED: Use the actual job analysis from the session data
+    const jobContext = {
+      jobTitle: jobData?.jobTitle || sessionData?.jobTitle || 'Technical Role',
+      company: jobData?.company || sessionData?.company || 'Company',
+      // Try multiple paths to find the correct job analysis
+      jobAnalysis: sessionData?.jobAnalysis || // From backend session
+                   jobData?.analysis?.jobAnalysis || // From frontend analysis
+                   jobData?.jobAnalysis || // Direct path
+                   null // Let backend handle fallback
+    };
     
     console.log('📋 Job context being sent:', JSON.stringify(jobContext, null, 2));
     
-    // Send to backend for AI conversation processing
     if (socketRef.current && sessionData?.id) {
       console.log('📡 Sending conversation turn to backend...');
       socketRef.current.emit('interview:conversation-turn', {
         sessionId: sessionData.id,
         userResponse: userResponse,
         conversationMemory: newMemory,
-        jobContext: jobContext  // ✅ Now properly structured
+        jobContext: jobContext
       });
     } else {
       console.error('❌ Cannot send conversation turn: socket or session not available');
@@ -448,21 +462,7 @@ const VoiceInterview = ({
     return keywordMap[topic.toLowerCase()] || [topic.toLowerCase()];
   };
 
-  // ✨ NEW: Helper function to structure job context properly
-  const getStructuredJobContext = () => {
-    return {
-      jobTitle: jobData?.jobTitle || 'Technical Role',
-      company: jobData?.company || 'Company', 
-      jobAnalysis: jobData?.analysis?.jobAnalysis || jobData?.jobAnalysis || {
-        requiredSkills: [
-          { name: 'Technical Skills', importance: 'high' },
-          { name: 'Problem Solving', importance: 'high' },
-          { name: 'Communication', importance: 'medium' }
-        ],
-        experienceLevel: 'intermediate'
-      }
-    };
-  };
+  // ✨ REMOVED: Old helper function that was overriding real job analysis with fallbacks
 
   // Fallback HTTP-based answer processing
   const processAnswer = async (answer) => {
@@ -558,10 +558,27 @@ const VoiceInterview = ({
     }
   }, [interviewPhase, currentQuestion, isInConversation]);
   
-  // ✨ NEW: Debug logging to see job data structure
+  // ✨ ENHANCED: Debug logging to see job data structure and flow
   useEffect(() => {
     console.log('🔍 VoiceInterview jobData received:', JSON.stringify(jobData, null, 2));
     console.log('🔍 VoiceInterview sessionData received:', JSON.stringify(sessionData, null, 2));
+    
+    // Log the specific paths we're checking for job analysis
+    console.log('🔍 Job analysis paths check:');
+    console.log('  - sessionData?.jobAnalysis:', sessionData?.jobAnalysis);
+    console.log('  - jobData?.analysis?.jobAnalysis:', jobData?.analysis?.jobAnalysis);
+    console.log('  - jobData?.jobAnalysis:', jobData?.jobAnalysis);
+    
+    // Show what would be used for job context
+    const testContext = {
+      jobTitle: jobData?.jobTitle || sessionData?.jobTitle || 'Technical Role',
+      company: jobData?.company || sessionData?.company || 'Company',
+      jobAnalysis: sessionData?.jobAnalysis || 
+                   jobData?.analysis?.jobAnalysis || 
+                   jobData?.jobAnalysis || 
+                   null
+    };
+    console.log('🔍 Test job context that would be sent:', JSON.stringify(testContext, null, 2));
   }, [jobData, sessionData]);
   
   // ✨ NEW: Update interview phase when jobData changes (from parent)
