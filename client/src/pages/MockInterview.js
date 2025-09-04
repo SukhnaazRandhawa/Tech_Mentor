@@ -5,7 +5,6 @@ import {
   Clock,
   Play,
   Save,
-  Square,
   Target,
   TrendingUp
 } from 'lucide-react';
@@ -60,6 +59,19 @@ const MockInterview = () => {
   
   // Interview phase state
   const [interviewPhase, setInterviewPhase] = useState('greeting'); // greeting, questioning, complete
+  
+  // ✨ NEW: Conversation memory state for tracking interview progress
+  const [conversationMemory, setConversationMemory] = useState({
+    userResponses: [],
+    topicsDiscussed: [],
+    currentTopic: null,
+    followUpNeeded: [],
+    interviewProgress: 0,
+    currentPhase: 'introduction',
+    topicCoverage: {},
+    phaseStartTime: Date.now(),
+    lastTopicChange: Date.now()
+  });
   
   const chatEndRef = useRef(null);
   const [conversation, setConversation] = useState([]);
@@ -287,6 +299,12 @@ const MockInterview = () => {
   const endInterview = async () => {
     if (!sessionData) return;
     
+    // Get current conversation progress from VoiceInterview component
+    const conversationTurns = conversationMemory?.interviewProgress || 0;
+    const minimumForFeedback = 8; // Minimum turns needed for meaningful feedback
+    
+    console.log(`🔚 Manual end: ${conversationTurns} conversation turns completed`);
+    
     try {
       const response = await fetch('/api/mock-interview/end', {
         method: 'POST',
@@ -294,12 +312,15 @@ const MockInterview = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          sessionId: sessionData.id
+          sessionId: sessionData.id,
+          conversationMemory: conversationMemory, // Pass the conversation data
+          earlyTermination: conversationTurns < minimumForFeedback
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
+        console.log('📊 Received end interview feedback:', data.feedback);
         setFeedback(data.feedback);
         setActiveTab('feedback');
         setIsInterviewActive(false);
@@ -498,15 +519,7 @@ const MockInterview = () => {
               </div>
             </div>
             
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={endInterview}
-                className="btn-secondary text-sm px-3 py-2"
-              >
-                <Square className="h-4 w-4 mr-1" />
-                End Interview
-              </button>
-            </div>
+            {/* End Interview button removed - only VoiceInterview component has the button */}
           </div>
         </div>
 
@@ -518,6 +531,9 @@ const MockInterview = () => {
             setFeedback(feedback);
             setActiveTab('feedback');
           }}
+          onConversationUpdate={(memory) => {
+            setConversationMemory(memory);
+          }}
           jobData={jobData}
           sessionData={sessionData}
         />
@@ -528,6 +544,71 @@ const MockInterview = () => {
 
   // Render feedback screen
   if (activeTab === 'feedback') {
+    // Show early termination screen if interview was ended early
+    if (feedback?.incomplete && feedback?.earlyTermination) {
+      return (
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-secondary-900 mb-4">
+              Interview Ended Early
+            </h1>
+            <p className="text-secondary-600 text-lg">
+              Complete the full interview to receive detailed feedback
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-lg p-8 text-center mb-8">
+            <div className="flex items-center justify-center w-20 h-20 bg-yellow-100 rounded-full mx-auto mb-6">
+              <Clock className="h-10 w-10 text-yellow-600" />
+            </div>
+            
+            <h2 className="text-2xl font-semibold text-secondary-900 mb-4">
+              Interview Incomplete
+            </h2>
+            
+            <p className="text-secondary-600 mb-6">
+              {feedback.summary}
+            </p>
+            
+            <p className="text-secondary-700 mb-6">
+              {feedback.recommendation}
+            </p>
+
+            {/* Next Steps */}
+            <div className="bg-secondary-50 rounded-lg p-6 mb-6 text-left">
+              <h3 className="font-semibold text-secondary-900 mb-3">To get comprehensive feedback:</h3>
+              <ul className="space-y-2">
+                {feedback.nextSteps?.map((step, idx) => (
+                  <li key={idx} className="flex items-start">
+                    <Target className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    <span className="text-secondary-700">{step}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-6">
+              <button
+                onClick={() => setActiveTab('start')}
+                className="btn-primary flex items-center justify-center px-8 py-3 text-lg"
+              >
+                <Play className="h-5 w-5 mr-2" />
+                Try Complete Interview
+              </button>
+              
+              <button
+                onClick={() => navigate('/')}
+                className="btn-secondary flex items-center justify-center px-8 py-3 text-lg"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center mb-8">
@@ -547,12 +628,12 @@ const MockInterview = () => {
                 Overall Performance
               </h2>
               <div className="text-6xl font-bold text-primary-600 mb-2">
-                {String(feedback?.overallScore || 0)}/10
+                {feedback?.overallScore !== undefined ? feedback.overallScore : 0}/10
               </div>
               <p className="text-secondary-600">
-                {(feedback?.overallScore || 0) >= 8 ? 'Excellent!' :
-                 (feedback?.overallScore || 0) >= 6 ? 'Good job!' :
-                 (feedback?.overallScore || 0) >= 4 ? 'Keep practicing!' :
+                {(feedback?.overallScore !== undefined && feedback.overallScore >= 8) ? 'Excellent!' :
+                 (feedback?.overallScore !== undefined && feedback.overallScore >= 6) ? 'Good job!' :
+                 (feedback?.overallScore !== undefined && feedback.overallScore >= 4) ? 'Keep practicing!' :
                  'More practice needed'}
               </p>
             </div>

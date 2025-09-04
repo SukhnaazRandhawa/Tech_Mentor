@@ -1200,51 +1200,205 @@ app.post('/api/mock-interview/start-with-job', async (req, res) => {
 });
 
 // End interview early
+// Enhanced /api/mock-interview/end endpoint
 app.post('/api/mock-interview/end', async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    const { sessionId, conversationMemory, jobContext, earlyTermination } = req.body;
+    
+    console.log('📥 End interview request:', { 
+      sessionId, 
+      hasMemory: !!conversationMemory, 
+      hasJobContext: !!jobContext,
+      responses: conversationMemory?.userResponses?.length || 0,
+      earlyTermination: earlyTermination
+    });
     
     if (!currentUserEmail) {
       return res.status(401).json({ message: 'Not authenticated' });
     }
     
-    if (!sessionId) {
-      return res.status(400).json({ message: 'Session ID is required' });
-    }
-    
     const user = userDatabase.get(currentUserEmail);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    let session = user.mockInterviews?.find(s => s.id === sessionId);
+    
+    // ✨ ENHANCED: Handle missing session with conversation data
+    if (!session && conversationMemory?.userResponses?.length > 0) {
+      console.log('⚠️ Session not found, creating from conversation data');
+      
+      // Create a temporary session from conversation data
+      session = {
+        id: sessionId || `temp-${Date.now()}`,
+        userId: user._id,
+        startTime: new Date(Date.now() - (5 * 60 * 1000)), // 5 minutes ago
+        endTime: new Date(),
+        duration: 5,
+        status: 'completed',
+        jobTitle: jobContext?.jobTitle || 'Technical Role',
+        company: jobContext?.company || 'Company',
+        jobAnalysis: jobContext?.jobAnalysis,
+        conversationMemory: conversationMemory,
+        answers: [], // No traditional answers in conversational format
+        scores: [] // No traditional scores
+      };
+      
+      // Add to user's interviews
+      if (!user.mockInterviews) user.mockInterviews = [];
+      user.mockInterviews.push(session);
     }
     
-    const session = user.mockInterviews?.find(s => s.id === sessionId);
     if (!session) {
-      return res.status(404).json({ message: 'Interview session not found' });
+      console.log('❌ No session data available for feedback generation');
+      return res.status(404).json({ 
+        message: 'Interview session not found and no backup data provided' 
+      });
     }
     
-    // End session
+    // Check if session already has feedback from natural completion
+    if (session.feedback && session.naturalCompletion) {
+      console.log('📋 Using existing feedback from natural completion');
+      return res.json({
+        message: 'Interview feedback retrieved',
+        feedback: session.feedback
+      });
+    }
+    
+    // Mark session as completed
     session.status = 'completed';
     session.endTime = new Date();
-    session.duration = Math.round((session.endTime - session.startTime) / 1000 / 60);
+    if (!session.duration) {
+      session.duration = Math.round((session.endTime - session.startTime) / 1000 / 60);
+    }
     
-    // Generate final feedback
-    const finalFeedback = await generateFinalFeedback(session, session.mode);
+    // ✨ ENHANCED: Generate feedback based on available data
+    let finalFeedback;
     
-    console.log(`Mock interview ended early: ${session.mode} for ${user.name}`);
+    if (earlyTermination) {
+      // Generate early termination feedback
+      console.log(`⚠️ Generating early termination feedback for ${conversationMemory?.userResponses?.length || 0} responses`);
+      finalFeedback = {
+        overallScore: null, // No score for incomplete interviews
+        incomplete: true,
+        summary: `Interview ended after ${conversationMemory?.userResponses?.length || 0} responses. Complete interviews provide more comprehensive feedback.`,
+        earlyTermination: true,
+        recommendation: "Try completing a full interview session to receive detailed performance analysis.",
+        nextSteps: [
+          "Schedule another interview when you have more time",
+          "Complete at least 8-10 questions for meaningful feedback",
+          "Practice answering questions fully before ending early"
+        ]
+      };
+    } else if (conversationMemory?.userResponses?.length > 0) {
+      // Use conversation-based feedback generation
+      console.log(`✅ Generating feedback from ${conversationMemory.userResponses.length} conversation responses`);
+      finalFeedback = await generateConversationalFeedback(session, conversationMemory);
+    } else if (session.conversationMemory?.userResponses?.length > 0) {
+      // Use stored conversation memory
+      console.log(`✅ Generating feedback from stored conversation data`);
+      finalFeedback = await generateConversationalFeedback(session, session.conversationMemory);
+    } else if (session.answers?.length > 0) {
+      // Traditional interview format
+      console.log(`✅ Generating feedback from ${session.answers.length} traditional answers`);
+      finalFeedback = await generateFinalFeedback(session);
+    } else {
+      // Fallback for minimal data
+      console.log(`⚠️ Generating basic completion feedback - no substantial data available`);
+      finalFeedback = generateBasicCompletionFeedback(session);
+    }
+    
+    // Store feedback in session
+    session.feedback = finalFeedback;
+    
+    console.log('✅ Final feedback generated:', {
+      overallScore: finalFeedback?.overallScore || 0,
+      categories: finalFeedback?.categories?.length || 0,
+      summary: finalFeedback?.summary?.substring(0, 100) || 'No summary'
+    });
     
     res.json({
-      message: 'Interview ended successfully',
+      message: earlyTermination ? 'Interview ended early' : 'Interview completed',
       feedback: finalFeedback
     });
     
   } catch (error) {
-    console.error('Error ending interview:', error);
+    console.error('❌ Error ending interview:', error);
+    
+    // ✨ ENHANCED: Emergency fallback with conversation data
+    const { conversationMemory } = req.body;
+    if (conversationMemory?.userResponses?.length > 0) {
+      console.log('🚨 Using emergency conversation fallback');
+      const emergencyFeedback = generateEmergencyFeedback(conversationMemory);
+      return res.json({
+        message: 'Interview ended with emergency feedback',
+        feedback: emergencyFeedback
+      });
+    }
+    
     res.status(500).json({ 
       message: 'Failed to end interview',
       error: error.message 
     });
   }
 });
+
+// ✨ NEW: Emergency feedback generator for error cases
+function generateEmergencyFeedback(conversationMemory) {
+  const responses = conversationMemory.userResponses || [];
+  const responseCount = responses.length;
+  
+  // Calculate basic score
+  let score = 4; // Base score for participation
+  if (responseCount >= 2) score += 2;
+  if (responseCount >= 3) score += 1;
+  if (responses.some(r => r.response.length > 50)) score += 1;
+  
+  const technicalContent = responses.some(r => {
+    const response = r.response.toLowerCase();
+    return response.includes('java') || response.includes('project') || 
+           response.includes('development') || response.includes('api') ||
+           response.includes('database') || response.includes('security');
+  });
+  
+  if (technicalContent) score += 1;
+  
+  return {
+    overallScore: Math.min(score, 8),
+    summary: `Interview session with ${responseCount} technical responses. ${
+      responseCount >= 3 ? 'Good engagement with technical topics.' :
+      responseCount >= 1 ? 'Some technical discussion, though session ended early.' :
+      'Brief session - more time needed for comprehensive assessment.'
+    }`,
+    categories: [
+      {
+        name: 'Technical Discussion',
+        score: Math.min(score, 7),
+        feedback: `Provided ${responseCount} responses with ${
+          technicalContent ? 'good technical content' : 'basic technical discussion'
+        }.`,
+        suggestions: responseCount >= 3 ? 
+          ['Continue building technical depth', 'Practice with more advanced scenarios'] :
+          ['Complete longer interviews for better assessment', 'Focus on detailed technical explanations']
+      },
+      {
+        name: 'Communication',
+        score: score,
+        feedback: `Clear communication in responses provided during the session.`,
+        suggestions: ['Practice structured explanations', 'Work on comprehensive answers']
+      }
+    ],
+    strengths: [
+      responseCount >= 3 ? 'Good engagement with technical topics' : 'Willingness to participate',
+      technicalContent ? 'Mentioned relevant technical concepts' : 'Basic technical awareness'
+    ],
+    improvements: [
+      'Complete full interview sessions for comprehensive feedback',
+      'Provide more detailed technical examples',
+      'Practice explaining complex concepts step by step'
+    ],
+    actionPlan: `Based on your ${responseCount} responses: ${
+      responseCount >= 3 ? 'Continue with advanced practice interviews' :
+      'Focus on completing longer practice sessions for better skill assessment'
+    }`
+  };
+}
 
 // Save interview feedback
 app.post('/api/mock-interview/save', async (req, res) => {
@@ -1972,23 +2126,85 @@ async function generateWelcomeMessage(topic, skillLevel, user) {
 // ✨ ENHANCED: Intelligent interview with job-specific progression
 async function processConversationTurn(session, userResponse, conversationMemory, jobContext) {
   try {
+    // ✅ CRITICAL: Always check OpenAI first, never fall back early
     if (!process.env.OPENAI_API_KEY) {
-      return generateFallbackConversationResponse(userResponse, conversationMemory);
+      console.error('❌ OpenAI API key missing - this will cause repetitive questions');
+      throw new Error('OpenAI API key required for dynamic interviews');
+    }
+
+    // ✨ ENHANCED: Update conversation memory with user response
+    const updatedMemory = {
+      ...conversationMemory,
+      userResponses: [...(conversationMemory.userResponses || []), {
+        response: userResponse,
+        timestamp: new Date(),
+        topic: conversationMemory.currentTopic
+      }],
+      interviewProgress: (conversationMemory.interviewProgress || 0) + 1
+    };
+
+    // ✨ NEW: Check if interview should naturally complete FIRST using job-based logic
+    const shouldCompleteNaturally = checkJobBasedCompletion(updatedMemory, jobContext);
+    
+    if (shouldCompleteNaturally) {
+      console.log('🎉 Interview naturally completing based on coverage and quality');
+      
+      // Generate final feedback immediately
+      const finalFeedback = await generateConversationalFeedback(session, updatedMemory);
+      
+      // Mark session as complete
+      session.status = 'completed';
+      session.endTime = new Date();
+      session.duration = Math.round((session.endTime - session.startTime) / 1000 / 60);
+      session.feedback = finalFeedback;
+      session.naturalCompletion = true;
+      session.conversationMemory = updatedMemory;
+      
+      return {
+        aiResponse: {
+          message: "Thank you for your time today. That concludes our interview. Based on our discussion, I have a good sense of your technical abilities and experience. You'll receive detailed feedback in just a moment.",
+          type: "completion"
+        },
+        conversationUpdate: {
+          currentTopic: 'interview_complete',
+          newTopics: ['interview_complete'],
+          followUpNeeded: []
+        },
+        interviewStatus: "interview_complete",
+        finalFeedback: finalFeedback
+      };
     }
 
     // Determine if we should transition topics
-    const shouldTransition = shouldTransitionTopic(conversationMemory, userResponse);
+    const shouldTransition = shouldTransitionTopic(updatedMemory, userResponse);
     const nextTopic = shouldTransition ? 
-      getNextTechnicalTopic(jobContext, conversationMemory) : 
-      conversationMemory.currentTopic;
+      getNextJobBasedTopic(jobContext, updatedMemory) : 
+      updatedMemory.currentTopic;
     
-    // ✅ FIXED: Handle interview completion signal
+    // ✅ FIXED: Handle interview completion signal (legacy fallback)
     if (nextTopic === 'COMPLETE_INTERVIEW') {
-      console.log(`🎉 Interview completion triggered`);
-      console.log(`📊 Completion stats: ${conversationMemory.interviewProgress} responses, ${conversationMemory.topicsDiscussed.length} topics covered`);
+      console.log(`🎉 Interview completion triggered (legacy)`);
+      console.log(`📊 Completion stats: ${updatedMemory.interviewProgress} responses, ${updatedMemory.topicsDiscussed.length} topics covered`);
+      
+      // ✨ FIXED: Generate final feedback immediately when completing naturally
+      console.log('🔄 Generating final feedback for natural completion...');
+      
+      // Mark session as completed
+      session.status = 'completed';
+      session.endTime = new Date();
+      session.duration = Math.round((session.endTime - session.startTime) / 1000 / 60);
+      
+      // ✨ NEW: Store conversation data for feedback generation
+      session.conversationMemory = updatedMemory;
+      session.naturalCompletion = true; // Flag to indicate natural completion
+      
+      // Generate final feedback based on conversation
+      const finalFeedback = await generateConversationalFeedback(session, updatedMemory);
+      session.feedback = finalFeedback;
+      
       return {
         aiResponse: {
-          message: "Thank you for your time today. That completes our interview. I'll provide you with detailed feedback in just a moment.",
+          message: "Thank you for your time today. That completes our interview. You'll receive detailed feedback in just a moment.",
           type: "completion"
         },
         conversationUpdate: {
@@ -1996,13 +2212,14 @@ async function processConversationTurn(session, userResponse, conversationMemory
           newTopics: [],
           followUpNeeded: []
         },
-        interviewStatus: "interview_complete" // This will trigger the frontend to end
+        interviewStatus: "interview_complete", // This will trigger the frontend
+        finalFeedback: finalFeedback // ✨ NEW: Include feedback in response
       };
     }
     
     // Log the topic selection decision
     if (nextTopic === 'wrap_up_questions') {
-      console.log(`🔄 Wrap-up phase: ${conversationMemory.interviewProgress} responses, continuing with behavioral/closing questions`);
+      console.log(`🔄 Wrap-up phase: ${updatedMemory.interviewProgress} responses, continuing with behavioral/closing questions`);
     }
     
     // Extract job-specific information dynamically
@@ -2024,34 +2241,41 @@ async function processConversationTurn(session, userResponse, conversationMemory
     const topPrioritySkills = jobContext?.jobAnalysis?.requiredSkills?.slice(0, 3).map(s => s.name || s).join(', ') || 'core skills';
     
     console.log(`🎯 Interview context: ${jobTitle}, focusing on: ${topPrioritySkills}`);
-    console.log(`📍 Current topic: ${conversationMemory.currentTopic}, Next: ${nextTopic}, Should transition: ${shouldTransition}`);
+    console.log(`📍 Current topic: ${updatedMemory.currentTopic}, Next: ${nextTopic}, Should transition: ${shouldTransition}`);
 
-    const systemPrompt = `You are conducting a technical interview for ${jobTitle}.
+    // ✅ CRITICAL: Always use OpenAI for question generation
+    console.log(`🤖 Using OpenAI for ${nextTopic} questions - NO fallback allowed`);
+    
+    const systemPrompt = `You are conducting a thorough interview for ${jobContext?.jobTitle || 'this role'} at ${jobContext?.company || 'the company'}.
 
-CONTEXT:
-- Job requires: ${jobSkills}
-- Current topic: ${conversationMemory.currentTopic}
-- Progress: ${conversationMemory.interviewProgress}/15 turns
-- Should transition: ${shouldTransition ? 'YES - move to next topic' : 'NO - continue current topic'}
-- Next topic: ${nextTopic}
+JOB REQUIREMENTS ANALYSIS:
+- Required skills: ${jobContext?.jobAnalysis?.requiredSkills?.map(s => s.name).join(', ') || 'technical skills'}
+- Current topic: ${updatedMemory.currentTopic}
+- Progress: ${updatedMemory.interviewProgress} responses given
+- Interview coverage: ${updatedMemory.topicsDiscussed.join(', ')}
 
 INSTRUCTIONS:
 ${shouldTransition ? 
-  (nextTopic === 'wrap_up_questions' ? 
-    `TRANSITION to wrap-up phase. Ask behavioral or closing questions like: "What challenges have you faced in your career?" or "What questions do you have about the role?"` :
-    `TRANSITION NOW to "${nextTopic}". Say: "Let's talk about ${nextTopic}. [Ask specific question about this topic]"`
+  (nextTopic === 'behavioral_scenarios' ? 
+    `TRANSITION to behavioral questions. Ask about real experiences: "Tell me about a time when you had to [specific scenario relevant to the job]" or "Describe a challenging situation you faced in [relevant context]"` :
+    nextTopic === 'role_specific_challenges' ?
+    `TRANSITION to role-specific challenges. Ask about handling situations specific to this ${jobContext?.jobTitle || 'role'}: "How would you approach [specific challenge from job description]?"` :
+    `TRANSITION to "${nextTopic}". Ask a specific technical question about this skill/technology.`
   ) :
-  `CONTINUE with "${conversationMemory.currentTopic}". Ask a follow-up question to go deeper.`
+  `CONTINUE with "${updatedMemory.currentTopic}". Ask a thoughtful follow-up question to explore this area more deeply.`
 }
 
-For ${jobTitle}, prioritize questions about: ${topPrioritySkills}
-
-Keep responses under 30 words. Be conversational and natural.
+CRITICAL: 
+- Ask UNIQUE questions each time - never repeat previous questions
+- For behavioral questions, be specific and relevant to the job requirements
+- For technical questions, vary difficulty and approach
+- Keep responses under 35 words
+- Be conversational but professional
 
 RESPOND WITH JSON:
 {
   "aiResponse": {
-    "message": "your interview question or transition",
+    "message": "your specific interview question",
     "type": "${shouldTransition ? 'transition' : 'followup'}"
   },
   "conversationUpdate": {
@@ -2062,26 +2286,36 @@ RESPOND WITH JSON:
   "interviewStatus": "continue_conversation"
 }`;
 
-    const userPrompt = `Candidate just said: "${userResponse.substring(0, 100)}"
+    const userPrompt = `Candidate's latest response: "${userResponse.substring(0, 150)}"
+
+Current interview context:
+- Topics already covered: ${updatedMemory.topicsDiscussed.join(', ')}
+- Current focus: ${updatedMemory.currentTopic}
+- This role requires: ${jobContext?.jobAnalysis?.requiredSkills?.slice(0, 3).map(s => s.name).join(', ')}
 
 ${shouldTransition ? 
-  (nextTopic === 'wrap_up_questions' ? 
-    `Now transition to wrap-up questions. Ask behavioral or closing questions to naturally conclude the interview.` :
-    `Now transition to asking about: ${nextTopic}`
-  ) : 
-  `Ask a follow-up question about: ${conversationMemory.currentTopic}`
-}`;
+  `Now transition to asking about: ${nextTopic}. Make it relevant to ${jobContext?.jobTitle || 'this role'}.` : 
+  `Continue exploring: ${updatedMemory.currentTopic}. Ask a different follow-up question than before.`
+}
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.3,
-      max_tokens: 200,
-      response_format: { type: "json_object" }
-    });
+Generate a unique, relevant interview question.`;
+
+    // ✅ CRITICAL: Force timeout to prevent hanging
+    const response = await Promise.race([
+      openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.4,
+        max_tokens: 200,
+        response_format: { type: "json_object" }
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('OpenAI timeout')), 15000)
+      )
+    ]);
 
     const content = response.choices[0].message.content.trim();
     console.log('Raw OpenAI response:', content);
@@ -2109,12 +2343,43 @@ ${shouldTransition ?
       throw new Error('Invalid response structure');
     }
     
+    console.log(`✅ OpenAI successfully generated ${parsed.aiResponse.type} question for ${nextTopic}`);
+    
     return parsed;
     
   } catch (error) {
-    console.error('Error in conversation processing:', error);
-    return generateFallbackConversationResponse(userResponse, conversationMemory);
+    console.error('❌ CRITICAL: OpenAI failed for interview question generation:', error);
+    
+    // ✅ ONLY use fallback as absolute last resort and log it prominently
+    console.error('🚨 FALLING BACK TO GENERIC RESPONSE - THIS WILL CAUSE REPETITIVE QUESTIONS');
+    return generateEmergencyConversationResponse(userResponse, updatedMemory);
   }
+}
+
+// ✨ NEW: Emergency conversation response for critical failures
+function generateEmergencyConversationResponse(userResponse, conversationMemory) {
+  const responses = [
+    "That's interesting! Can you tell me more about that?",
+    "I see. How did you handle that situation?",
+    "That's a good point. What would you do differently next time?",
+    "Interesting approach. Can you walk me through your thought process?",
+    "That makes sense. How does this relate to the role you're applying for?"
+  ];
+  
+  const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+  
+  return {
+    aiResponse: {
+      message: randomResponse,
+      type: "followup"
+    },
+    conversationUpdate: {
+      currentTopic: conversationMemory.currentTopic,
+      newTopics: [],
+      followUpNeeded: []
+    },
+    interviewStatus: "continue_conversation"
+  };
 }
 
 function generateFallbackConversationResponse(userResponse, conversationMemory) {
@@ -2142,7 +2407,50 @@ function generateFallbackConversationResponse(userResponse, conversationMemory) 
   };
 }
 
-// ✨ FIXED: Enhanced topic selection with proper completion handling
+// ✨ ENHANCED: Job-based topic selection with dynamic progression
+const getNextJobBasedTopic = (jobContext, conversationMemory) => {
+  const requiredSkills = jobContext?.jobAnalysis?.requiredSkills || [];
+  const coveredTopics = conversationMemory.topicsDiscussed || [];
+  const totalResponses = conversationMemory.interviewProgress || 0;
+  
+  console.log(`🎯 Job-based topic selection: ${requiredSkills.length} required skills, ${coveredTopics.length} covered`);
+  
+  // Phase 1: Cover all technical skills first
+  for (const skill of requiredSkills) {
+    const skillName = (skill.name || skill).toLowerCase();
+    const isAlreadyCovered = coveredTopics.some(topic => 
+      topic.toLowerCase().includes(skillName.split(' ')[0]) // Match first word of skill
+    );
+    
+    if (!isAlreadyCovered) {
+      console.log(`🔧 Next technical topic: ${skillName}`);
+      return skillName;
+    }
+  }
+  
+  // Phase 2: Behavioral and role-specific questions
+  const behavioralTopics = ['behavioral_scenarios', 'role_specific_challenges', 'team_collaboration'];
+  for (const topic of behavioralTopics) {
+    if (!coveredTopics.includes(topic)) {
+      console.log(`👥 Next behavioral topic: ${topic}`);
+      return topic;
+    }
+  }
+  
+  // Phase 3: Check if we have adequate coverage
+  const averageDepth = totalResponses / Math.max(coveredTopics.length, 1);
+  const minimumDepth = 2.5; // At least 2.5 questions per topic
+  
+  if (averageDepth < minimumDepth && totalResponses < requiredSkills.length * 3) {
+    console.log(`📊 Need more depth: ${averageDepth.toFixed(1)} avg depth, continuing with wrap-up`);
+    return 'comprehensive_review';
+  }
+  
+  console.log(`✅ Job requirements fully covered, completing interview`);
+  return 'COMPLETE_INTERVIEW';
+};
+
+// ✨ FIXED: Enhanced topic selection with proper completion handling (legacy)
 const getNextTechnicalTopic = (jobContext, conversationMemory) => {
   const requiredSkills = jobContext?.jobAnalysis?.requiredSkills || [];
   const coveredTopics = conversationMemory.topicsDiscussed || [];
@@ -2248,37 +2556,436 @@ function extractSpecificSkills(skillStrings) {
   return extractedSkills;
 }
 
-// ✨ NEW: Missing generateFinalFeedback function
+// ✨ ENHANCED: generateFinalFeedback function that uses real session data
 async function generateFinalFeedback(session) {
-  const averageScore = session.scores?.length > 0 ? 
-    Math.round(session.scores.reduce((sum, score) => sum + score, 0) / session.scores.length) : 7;
+  console.log('=== generateFinalFeedback called ===');
+  console.log('Session data:', session);
+  
+  // Check if session has any answers
+  if (!session.answers || session.answers.length === 0) {
+    console.log('⚠️ No answers in session, generating basic feedback');
+    return generateBasicCompletionFeedback(session);
+  }
+  
+  // Calculate real scores from session data
+  const realScores = session.scores || [];
+  const averageScore = realScores.length > 0 ? 
+    Math.round(realScores.reduce((sum, score) => sum + score, 0) / realScores.length) : 7;
+  
+  console.log(`Real average score calculated: ${averageScore} from ${realScores.length} answers`);
+  
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('❌ No OpenAI API key, using real data fallback');
+      return generateRealDataFallback(session, averageScore);
+    }
 
+    const systemPrompt = `You are an expert technical interviewer providing comprehensive final feedback. Analyze the interview performance and provide:
+
+1. OVERALL ASSESSMENT based on actual performance data
+2. DETAILED ANALYSIS of each category (Technical, Problem Solving, Communication)  
+3. SPECIFIC STRENGTHS and areas for improvement based on actual answers
+4. ACTIONABLE SUGGESTIONS for future interviews
+5. REALISTIC assessment based on actual session data
+
+IMPORTANT: Base everything on the actual interview data provided, not generic responses.
+
+Format as JSON:
+{
+  "overallScore": ${averageScore},
+  "summary": "Realistic assessment based on actual performance",
+  "categories": [
+    {
+      "name": "Technical Knowledge",
+      "score": 8,
+      "feedback": "Based on actual technical responses given",
+      "suggestions": ["specific suggestion based on actual performance"]
+    }
+  ],
+  "strengths": ["actual strengths observed"],
+  "improvements": ["specific areas needing work based on session"],
+  "actionPlan": "Realistic timeline based on performance level"
+}`;
+
+    const userPrompt = `Please provide final interview feedback based on this actual session data:
+
+INTERVIEW SUMMARY:
+- Total Questions Asked: ${session.questions?.length || 0}
+- Questions Actually Answered: ${session.answers?.length || 0}
+- Real Average Score: ${averageScore}/10 (from ${realScores.length} scored answers)
+- Interview Duration: ${session.duration || 'ongoing'} minutes
+- Job Context: ${session.jobTitle || 'Technical role'} at ${session.company || 'Company'}
+
+ACTUAL ANSWER QUALITY:
+${session.answers?.map((a, i) => `Answer ${i+1}: ${a.answer.substring(0, 200)}... (Score: ${session.scores?.[i] || 'N/A'})`).join('\n') || 'No answers recorded'}
+
+IMPORTANT: Base your feedback on this REAL data, not generic templates. If the user completed the full interview naturally, acknowledge that. If they ended early, factor that in.
+
+Provide comprehensive final feedback and realistic assessment.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000,
+      response_format: { type: "json_object" }
+    });
+
+    const content = response.choices[0].message.content;
+    console.log('✅ AI final feedback received');
+
+    const parsedResponse = JSON.parse(content);
+    
+    // Ensure real score is used
+    parsedResponse.overallScore = averageScore;
+    
+    return parsedResponse;
+    
+  } catch (error) {
+    console.error('❌ Error generating AI final feedback:', error);
+    return generateRealDataFallback(session, averageScore);
+  }
+}
+
+// ✨ NEW: Fallback that uses real session data instead of hardcoded values
+function generateRealDataFallback(session, averageScore) {
+  const answersCount = session.answers?.length || 0;
+  const expectedQuestions = session.questions?.length || 15;
+  const completionRate = Math.round((answersCount / expectedQuestions) * 100);
+  
+  console.log(`Generating real data fallback: ${answersCount}/${expectedQuestions} answers (${completionRate}% complete)`);
+  
+  // Base categories on actual performance
+  const categories = [
+    {
+      name: 'Technical Knowledge',
+      score: Math.max(1, averageScore - 1), // Slightly lower than average
+      feedback: `Based on your ${answersCount} responses, you demonstrated ${
+        averageScore >= 8 ? 'strong' : averageScore >= 6 ? 'good' : 'basic'
+      } technical understanding.`,
+      suggestions: averageScore >= 8 ? 
+        ['Continue building on your solid foundation'] : 
+        ['Practice more technical problems', 'Review fundamental concepts']
+    },
+    {
+      name: 'Problem Solving',
+      score: averageScore,
+      feedback: `Your problem-solving approach across ${answersCount} questions showed ${
+        averageScore >= 6 ? 'good' : 'developing'
+      } analytical skills.`,
+      suggestions: ['Continue practicing structured problem-solving', 'Work on edge case identification']
+    },
+    {
+      name: 'Communication',
+      score: Math.min(10, averageScore + 1), // Slightly higher than average
+      feedback: `Communication was clear throughout your ${answersCount} responses.`,
+      suggestions: ['Practice explaining complex concepts simply', 'Work on concise explanations']
+    }
+  ];
+  
   return {
     overallScore: averageScore,
-    summary: `You completed the AI-powered interview with an average score of ${averageScore}/10. Keep practicing to improve your skills!`,
+    summary: `You completed ${answersCount} out of ${expectedQuestions} interview questions (${completionRate}% completion) with an average score of ${averageScore}/10. ${
+      completionRate >= 80 ? 'Great job completing most of the interview!' :
+      completionRate >= 50 ? 'Good progress through the interview questions.' :
+      'You started the interview but ended early - consider practicing full interviews for better preparation.'
+    }`,
+    categories: categories,
+    strengths: [
+      answersCount >= 5 ? 'Engaged with multiple questions' : 'Showed willingness to participate',
+      averageScore >= 7 ? 'Good technical foundation' : 'Basic understanding demonstrated'
+    ],
+    improvements: [
+      completionRate < 80 ? 'Practice completing full interviews' : 'Continue building on your foundation',
+      'Work on advanced concepts',
+      'Practice more complex scenarios'
+    ],
+    actionPlan: `Based on your ${completionRate}% completion rate and ${averageScore}/10 average: ${
+      averageScore >= 8 ? '1-2 weeks of advanced practice recommended' :
+      averageScore >= 6 ? '2-4 weeks of focused preparation needed' :
+      '4-8 weeks of foundational work recommended'
+    }`
+  };
+}
+
+// ✨ NEW: Basic feedback for when no substantial answers were given
+function generateBasicCompletionFeedback(session) {
+  return {
+    overallScore: 5,
+    summary: `Interview session completed. You engaged with the AI interviewer for ${session.duration || 'several'} minutes. For better feedback, try answering more questions in future sessions.`,
     categories: [
       {
-        name: 'Technical Knowledge',
-        score: Math.floor(Math.random() * 3) + 6,
-        feedback: 'Solid technical understanding with room for improvement.',
-        suggestions: ['Practice more complex problems', 'Review fundamentals']
-      },
+        name: 'Session Engagement',
+        score: 6,
+        feedback: 'You started the interview and engaged with the system.',
+        suggestions: ['Try completing more questions next time', 'Practice structured answers']
+      }
+    ],
+    strengths: ['Willingness to practice', 'Engaged with the interview system'],
+    improvements: ['Complete more questions for better assessment', 'Practice giving detailed technical answers'],
+    actionPlan: 'Try a full interview session to get comprehensive feedback on your skills.'
+  };
+}
+
+// ✨ ENHANCED: Generate feedback based on conversational interview with OpenAI
+async function generateConversationalFeedback(session, conversationMemory) {
+  console.log('=== generateConversationalFeedback called ===');
+  console.log(`Generating feedback for ${conversationMemory.userResponses?.length || 0} responses across ${conversationMemory.topicsDiscussed?.length || 0} topics`);
+  
+  try {
+    // ✅ CRITICAL: Always try OpenAI first
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OpenAI required for personalized feedback');
+    }
+
+    const systemPrompt = `You are an expert interviewer providing comprehensive final feedback based on the actual interview conversation.
+
+INTERVIEW CONTEXT:
+- Role: ${session.jobTitle || 'Technical Role'} at ${session.company || 'Company'}
+- Required Skills: ${session.jobAnalysis?.requiredSkills?.map(s => s.name).join(', ') || 'Various technical skills'}
+- Interview Length: ${conversationMemory.userResponses?.length || 0} responses
+- Topics Covered: ${conversationMemory.topicsDiscussed?.join(', ') || 'Multiple areas'}
+
+ACTUAL CONVERSATION DATA:
+${conversationMemory.userResponses?.map((r, i) => 
+  `Response ${i+1} (${r.topic}): "${r.response.substring(0, 100)}..."`
+).join('\n') || 'No responses recorded'}
+
+Based on this REAL conversation, provide comprehensive feedback in JSON format:
+{
+  "overallScore": 8,
+  "summary": "Detailed assessment based on actual responses and job requirements",
+  "categories": [
+    {
+      "name": "Technical Knowledge",
+      "score": 8,
+      "feedback": "Specific feedback based on actual technical discussions",
+      "suggestions": ["Specific improvements based on actual responses"]
+    },
+    {
+      "name": "Communication",
+      "score": 7,
+      "feedback": "Assessment of actual communication during interview",
+      "suggestions": ["Communication improvements based on actual performance"]
+    },
+    {
+      "name": "Job Fit",
+      "score": 8,
+      "feedback": "How well responses align with job requirements",
+      "suggestions": ["Job-specific suggestions based on requirements analysis"]
+    }
+  ],
+  "strengths": ["Actual strengths observed during interview"],
+  "improvements": ["Specific areas for improvement based on actual performance"],
+  "actionPlan": "Realistic next steps based on actual interview performance"
+}
+
+Base everything on the ACTUAL conversation content and job requirements.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: "Generate comprehensive feedback based on the interview data provided." }
+      ],
+      temperature: 0.3,
+      max_tokens: 2000,
+      response_format: { type: "json_object" }
+    });
+
+    const content = response.choices[0].message.content;
+    const feedback = JSON.parse(content);
+    
+    console.log('✅ OpenAI generated personalized final feedback');
+    return feedback;
+    
+  } catch (error) {
+    console.error('❌ OpenAI failed for final feedback:', error);
+    console.log('🔄 Using enhanced fallback with conversation data');
+    
+    // Enhanced fallback that uses actual conversation data
+    return generateEnhancedFallbackFeedback(conversationMemory, session);
+  }
+}
+
+// ✨ ENHANCED: Dynamic job-based completion checker
+function checkJobBasedCompletion(conversationMemory, jobContext) {
+  const totalResponses = conversationMemory.interviewProgress || 0;
+  const topicsCovered = conversationMemory.topicsDiscussed?.length || 0;
+  const requiredSkills = jobContext?.jobAnalysis?.requiredSkills || [];
+  
+  // ✅ NEW: Dynamic completion based on job complexity
+  const jobComplexity = calculateJobComplexity(jobContext);
+  const requiredResponses = Math.max(8, requiredSkills.length * 2); // 2 questions per skill minimum
+  const requiredTopics = Math.max(3, Math.ceil(requiredSkills.length * 0.8)); // Cover 80% of skills
+  
+  console.log(`🎯 Job-based completion check: ${totalResponses}/${requiredResponses} responses, ${topicsCovered}/${requiredTopics} topics, complexity: ${jobComplexity}`);
+  
+  // Dynamic quality thresholds based on job complexity
+  const qualityThreshold = jobComplexity === 'high' ? 3 : jobComplexity === 'medium' ? 2.5 : 2;
+  const averageDepth = totalResponses / Math.max(topicsCovered, 1);
+  
+  const hasCompletedRequirements = totalResponses >= requiredResponses;
+  const hasGoodCoverage = topicsCovered >= requiredTopics;
+  const hasQualityDepth = averageDepth >= qualityThreshold;
+  
+  return hasCompletedRequirements && hasGoodCoverage && hasQualityDepth;
+}
+
+// ✅ NEW: Calculate job complexity based on requirements
+function calculateJobComplexity(jobContext) {
+  const skills = jobContext?.jobAnalysis?.requiredSkills || [];
+  const highImportanceSkills = skills.filter(s => s.importance === 'high').length;
+  const totalSkills = skills.length;
+  
+  if (totalSkills >= 8 || highImportanceSkills >= 5) return 'high';
+  if (totalSkills >= 5 || highImportanceSkills >= 3) return 'medium';
+  return 'basic';
+}
+
+// ✨ NEW: Enhanced fallback feedback using actual conversation data
+function generateEnhancedFallbackFeedback(conversationMemory, session) {
+  const totalResponses = conversationMemory.userResponses?.length || 0;
+  const topicsCovered = conversationMemory.topicsDiscussed?.length || 0;
+  const averageResponseLength = conversationMemory.userResponses?.reduce((sum, r) => sum + r.response.length, 0) / totalResponses || 0;
+  
+  console.log(`Generating enhanced fallback feedback for ${totalResponses} responses across ${topicsCovered} topics`);
+  
+  // Calculate a realistic score based on conversation quality
+  let overallScore = 6; // Base score
+  
+  // Scoring factors
+  if (totalResponses >= 8) overallScore += 1; // Good engagement
+  if (topicsCovered >= 4) overallScore += 1; // Good topic coverage  
+  if (averageResponseLength > 100) overallScore += 1; // Detailed responses
+  
+  // Check for specific technical terms mentioned
+  const technicalTermsFound = conversationMemory.userResponses.some(r => 
+    r.response.toLowerCase().includes('react') || 
+    r.response.toLowerCase().includes('node') ||
+    r.response.toLowerCase().includes('database') ||
+    r.response.toLowerCase().includes('api')
+  );
+  
+  if (technicalTermsFound) overallScore += 1;
+  
+  overallScore = Math.min(10, overallScore); // Cap at 10
+  
+  const categories = [
+    {
+      name: 'Technical Knowledge',
+      score: overallScore - 1,
+      feedback: `You demonstrated ${overallScore >= 8 ? 'strong' : 'solid'} technical understanding across ${topicsCovered} topic areas.`,
+      suggestions: ['Continue building on your technical foundation', 'Practice explaining complex concepts clearly']
+    },
+    {
+      name: 'Communication', 
+      score: overallScore,
+      feedback: `Clear communication throughout the ${totalResponses} responses you provided.`,
+      suggestions: ['Practice structuring your answers', 'Work on concise explanations']
+    },
+    {
+      name: 'Problem Solving',
+      score: overallScore - 1,
+      feedback: 'Good approach to discussing technical challenges and solutions.',
+      suggestions: ['Practice breaking down complex problems', 'Work on systematic thinking']
+    }
+  ];
+  
+  return {
+    overallScore: overallScore,
+    summary: `You completed a natural conversational interview with ${totalResponses} responses covering ${topicsCovered} key technical areas. Strong engagement throughout the discussion!`,
+    categories: categories,
+    strengths: [
+      `Covered ${topicsCovered} different technical topics`, 
+      'Good conversational flow',
+      totalResponses >= 8 ? 'Strong engagement' : 'Active participation'
+    ],
+    improvements: [
+      'Continue practicing technical concepts',
+      'Work on providing more specific examples',
+      'Practice explaining complex topics simply'
+    ],
+    actionPlan: `Based on your ${overallScore}/10 performance: ${
+      overallScore >= 8 ? '1-2 weeks of advanced practice recommended' :
+      overallScore >= 6 ? '2-4 weeks of focused preparation needed' :
+      '4-8 weeks of foundational work recommended'
+    }`
+  };
+}
+
+// ✨ NEW: Generate feedback from conversation memory when session is lost
+function generateFeedbackFromConversation(conversationMemory, jobContext) {
+  const responses = conversationMemory.userResponses || [];
+  const topicsCovered = conversationMemory.topicsDiscussed || [];
+  const totalResponses = responses.length;
+  
+  console.log(`Generating feedback from conversation: ${totalResponses} responses, ${topicsCovered.length} topics`);
+  
+  // Calculate realistic score based on conversation quality
+  let overallScore = 4; // Start lower for early-ended sessions
+  
+  if (totalResponses >= 2) overallScore += 2;
+  if (totalResponses >= 3) overallScore += 1;
+  if (topicsCovered.length >= 2) overallScore += 1;
+  
+  // Check for technical depth in responses
+  const hasTechnicalContent = responses.some(r => {
+    const response = r.response.toLowerCase();
+    return response.includes('java') ||
+           response.includes('node') ||
+           response.includes('database') ||
+           response.includes('api') ||
+           response.includes('project') ||
+           response.includes('application') ||
+           response.includes('development');
+  });
+  
+  if (hasTechnicalContent) overallScore += 1;
+  
+  overallScore = Math.min(overallScore, 8); // Cap at 8 for incomplete sessions
+  
+  const jobTitle = jobContext?.jobTitle || 'Technical Role';
+  
+  return {
+    overallScore: overallScore,
+    summary: `Interview session for ${jobTitle} with ${totalResponses} responses covering ${topicsCovered.length} topics. Session ended early - complete interviews provide more comprehensive assessment.`,
+    categories: [
       {
-        name: 'Problem Solving', 
-        score: Math.floor(Math.random() * 3) + 6,
-        feedback: 'Good approach to breaking down problems.',
-        suggestions: ['Work on edge cases', 'Consider multiple solutions']
+        name: 'Technical Discussion',
+        score: overallScore - 1,
+        feedback: `Discussed ${topicsCovered.length} technical areas with ${totalResponses} responses. ${
+          hasTechnicalContent ? 'Good technical content mentioned.' : 'Basic technical discussion.'
+        }`,
+        suggestions: ['Complete full interviews for better assessment', 'Provide more detailed technical examples', 'Explain technical concepts thoroughly']
       },
       {
         name: 'Communication',
-        score: Math.floor(Math.random() * 3) + 7,
-        feedback: 'Clear communication throughout the interview.',
-        suggestions: ['Practice explaining complex concepts', 'Ask clarifying questions']
+        score: overallScore,
+        feedback: `Provided ${totalResponses} clear responses during the session.`,
+        suggestions: ['Practice structured answers', 'Work on comprehensive explanations']
+      },
+      {
+        name: 'Interview Engagement',
+        score: Math.min(overallScore + 1, 8),
+        feedback: `Engaged with multiple interview questions before ending early.`,
+        suggestions: ['Practice completing full interviews', 'Work on sustained engagement']
       }
     ],
-    strengths: ['Clear thinking', 'Good problem approach'],
-    improvements: ['Technical depth', 'Advanced concepts'],
-    actionPlan: '2-4 weeks of focused practice recommended'
+    strengths: [
+      totalResponses >= 3 ? 'Good initial engagement' : 'Showed willingness to participate',
+      hasTechnicalContent ? 'Demonstrated technical knowledge' : 'Basic technical understanding',
+      'Clear communication style'
+    ],
+    improvements: [
+      'Complete full interview sessions for comprehensive feedback',
+      'Provide more comprehensive technical examples',
+      'Practice explaining complex concepts step-by-step'
+    ],
+    actionPlan: `Continue practicing: Complete full interviews to get comprehensive feedback on your ${jobTitle} skills. Based on your ${totalResponses} responses, focus on sustained technical discussion.`
   };
 }
 
