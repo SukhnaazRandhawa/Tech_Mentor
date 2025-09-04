@@ -300,34 +300,23 @@ const VoiceInterview = ({
   // Process user's answer via WebSocket for real-time communication
   const processAnswerViaWebSocket = (answer) => {
     if (socketRef.current && sessionData?.id) {
-      // Send answer via WebSocket for immediate processing
-      socketRef.current.emit('interview:voice-end', {
+      // ✅ FIXED: Use the new conversation flow instead of old discrete Q&A
+      console.log('🔄 Sending conversation turn via WebSocket');
+      socketRef.current.emit('interview:conversation-turn', {
         sessionId: sessionData.id,
-        questionId: currentQuestion?.id,
-        completeAnswer: answer,
-        code: showCodeEditor ? currentCode : null
+        userResponse: answer,
+        conversationMemory: conversationMemory,
+        jobContext: {
+          jobTitle: jobData?.jobTitle || sessionData?.jobTitle,
+          company: jobData?.company || sessionData?.company,
+          jobAnalysis: sessionData?.jobAnalysis || jobData?.analysis?.jobAnalysis
+        }
       });
       
-      // Set a timeout for processing (30 seconds max)
-      const processingTimeout = setTimeout(() => {
-        if (isProcessing) {
-          setIsProcessing(false);
-          speakText('Processing is taking longer than expected. Please try again or contact support.');
-        }
-      }, 30000);
-      
-      // Listen for response to clear timeout
-      const handleResponse = (data) => {
-        clearTimeout(processingTimeout);
-        setIsProcessing(false);
-        
-        // Remove the one-time listener
-        socketRef.current.off('interview:ai-response', handleResponse);
-      };
-      
-      socketRef.current.once('interview:ai-response', handleResponse);
+      setIsProcessing(true);
       
     } else {
+      console.warn('⚠️ WebSocket not available, falling back to HTTP');
       // Fallback to HTTP if WebSocket not available
       processAnswer(answer);
     }
@@ -876,7 +865,7 @@ const generateEmergencyFeedback = (memory) => {
             {jobData && (
               <div className="flex items-center space-x-2 text-sm text-gray-300">
                 <span>🎯 {jobData.jobTitle} at {jobData.company || 'Company'}</span>
-                <span>• {jobData.totalQuestions || 15} questions</span>
+                <span>• {jobData?.analysis?.jobAnalysis?.requiredSkills?.length || 'Multiple'} key skills</span>
                 <span>•</span>
                 <span className={`px-2 py-1 rounded-full text-xs ${
                   interviewPhase === 'greeting' ? 'bg-blue-600 text-white' :

@@ -416,7 +416,7 @@ const MockInterview = () => {
               Start Job-Specific Interview
             </h2>
             <p className="text-secondary-600 mb-6 text-lg">
-              Our AI analyzes job descriptions and generates 12-15 tailored questions covering technical skills, behavioral scenarios, and role-specific challenges.
+              Our AI analyzes job descriptions and generates dynamic questions based on the specific skills and requirements for each role.
             </p>
             <button
               onClick={() => setShowJobUpload(true)}
@@ -503,7 +503,7 @@ const MockInterview = () => {
                       {jobData.jobTitle} at {jobData.company || 'Company'}
                     </span>
                     <span className="text-xs text-secondary-500">
-                      ({jobData.totalQuestions || 15} questions)
+                      ({jobData?.analysis?.jobAnalysis?.requiredSkills?.length || 'Multiple'} skills)
                     </span>
                   </div>
                 )}

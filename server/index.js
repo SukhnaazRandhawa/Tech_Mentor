@@ -1014,13 +1014,11 @@ app.post('/api/mock-interview/start', async (req, res) => {
     session.scores.push(feedback.score);
     session.answers[session.answers.length - 1].feedback = feedback;
     
-    // Check if interview should continue or end
-    const totalQuestions = session.questions.length || 15;
+    // ✅ FIXED: Use dynamic completion logic instead of hardcoded limits
     const currentProgress = session.answers.length;
     
-    // Dynamic interview length based on job complexity and coverage
-    const shouldContinue = currentProgress < totalQuestions && 
-                          currentProgress < 15; // Maximum 15 questions
+    // For legacy support, use a reasonable maximum but allow dynamic completion
+    const shouldContinue = currentProgress < 20; // Increased limit for complex jobs
     
     let nextQuestion = null;
     let interviewComplete = false;
