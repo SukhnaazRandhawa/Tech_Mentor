@@ -1622,6 +1622,7 @@ Please provide detailed feedback, score, and suggestions.`;
 
 // Fallback feedback function
 // ✅ FIXED: Removed mode parameter completely
+/*
 function generateFallbackInterviewFeedback(userLevel) {
   const feedbacks = [
     {
@@ -1650,6 +1651,7 @@ function generateFallbackInterviewFeedback(userLevel) {
   const randomIndex = Math.floor(Math.random() * feedbacks.length);
   return feedbacks[randomIndex];
 }
+*/
 
 // AI-Powered Job Analysis and Interview Question Generation
 // Find this function around line 1473 and update it:
@@ -2554,72 +2556,59 @@ function extractSpecificSkills(skillStrings) {
   return extractedSkills;
 }
 
-// ✨ ENHANCED: generateFinalFeedback function that uses real session data
+// ✅ SIMPLIFIED: Debug version to identify real OpenAI issues
 async function generateFinalFeedback(session) {
-  console.log('=== generateFinalFeedback called ===');
-  console.log('Session data:', session);
+  console.log('=== generateFinalFeedback DEBUG ===');
   
-  // Check if session has any answers
-  if (!session.answers || session.answers.length === 0) {
-    console.log('⚠️ No answers in session, generating basic feedback');
-    return generateBasicCompletionFeedback(session);
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OpenAI API key required for feedback generation');
   }
-  
-  // Calculate real scores from session data
-  const realScores = session.scores || [];
-  const averageScore = realScores.length > 0 ? 
-    Math.round(realScores.reduce((sum, score) => sum + score, 0) / realScores.length) : 7;
-  
-  console.log(`Real average score calculated: ${averageScore} from ${realScores.length} answers`);
-  
+
+  const averageScore = session.scores?.length > 0 ? 
+    Math.round(session.scores.reduce((sum, score) => sum + score, 0) / session.scores.length) : 7;
+
+  console.log('📊 Real average score:', averageScore, 'from', session.scores?.length || 0, 'answers');
+
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      console.log('❌ No OpenAI API key, using real data fallback');
-      return generateRealDataFallback(session, averageScore);
-    }
+    console.log('📡 Making OpenAI feedback request...');
 
-    const systemPrompt = `You are an expert technical interviewer providing comprehensive final feedback. Analyze the interview performance and provide:
-
-1. OVERALL ASSESSMENT based on actual performance data
-2. DETAILED ANALYSIS of each category (Technical, Problem Solving, Communication)  
-3. SPECIFIC STRENGTHS and areas for improvement based on actual answers
-4. ACTIONABLE SUGGESTIONS for future interviews
-5. REALISTIC assessment based on actual session data
-
-IMPORTANT: Base everything on the actual interview data provided, not generic responses.
+    const systemPrompt = `You are an expert interviewer providing final feedback. Base everything on the actual interview data provided.
 
 Format as JSON:
 {
   "overallScore": ${averageScore},
-  "summary": "Realistic assessment based on actual performance",
+  "summary": "Assessment based on actual responses",
   "categories": [
     {
-      "name": "Technical Knowledge",
+      "name": "Technical Knowledge", 
       "score": 8,
-      "feedback": "Based on actual technical responses given",
-      "suggestions": ["specific suggestion based on actual performance"]
+      "feedback": "Based on actual technical discussions",
+      "suggestions": ["specific suggestion based on performance"]
+    },
+    {
+      "name": "Communication",
+      "score": 7, 
+      "feedback": "Based on actual communication during interview",
+      "suggestions": ["communication improvements needed"]
+    },
+    {
+      "name": "Problem Solving",
+      "score": 8,
+      "feedback": "Based on actual problem-solving demonstrated", 
+      "suggestions": ["problem-solving improvements"]
     }
   ],
   "strengths": ["actual strengths observed"],
-  "improvements": ["specific areas needing work based on session"],
-  "actionPlan": "Realistic timeline based on performance level"
+  "improvements": ["specific areas needing work"],
+  "actionPlan": "Realistic next steps based on performance"
 }`;
 
-    const userPrompt = `Please provide final interview feedback based on this actual session data:
+    const userPrompt = `Interview Data:
+- Questions: ${session.answers?.length || 0}
+- Average Score: ${averageScore}/10  
+- Sample Answers: ${session.answers?.map(a => a.answer.substring(0, 100)).join(' | ') || 'None'}
 
-INTERVIEW SUMMARY:
-- Total Questions Asked: ${session.questions?.length || 0}
-- Questions Actually Answered: ${session.answers?.length || 0}
-- Real Average Score: ${averageScore}/10 (from ${realScores.length} scored answers)
-- Interview Duration: ${session.duration || 'ongoing'} minutes
-- Job Context: ${session.jobTitle || 'Technical role'} at ${session.company || 'Company'}
-
-ACTUAL ANSWER QUALITY:
-${session.answers?.map((a, i) => `Answer ${i+1}: ${a.answer.substring(0, 200)}... (Score: ${session.scores?.[i] || 'N/A'})`).join('\n') || 'No answers recorded'}
-
-IMPORTANT: Base your feedback on this REAL data, not generic templates. If the user completed the full interview naturally, acknowledge that. If they ended early, factor that in.
-
-Provide comprehensive final feedback and realistic assessment.`;
+Generate realistic feedback based on this actual data.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -2632,23 +2621,29 @@ Provide comprehensive final feedback and realistic assessment.`;
       response_format: { type: "json_object" }
     });
 
+    console.log('✅ OpenAI response received');
     const content = response.choices[0].message.content;
-    console.log('✅ AI final feedback received');
-
-    const parsedResponse = JSON.parse(content);
+    console.log('📄 Raw content:', content);
     
-    // Ensure real score is used
-    parsedResponse.overallScore = averageScore;
+    const feedback = JSON.parse(content);
+    console.log('✅ Parsed feedback - Score:', feedback.overallScore);
     
-    return parsedResponse;
+    return feedback;
     
   } catch (error) {
-    console.error('❌ Error generating AI final feedback:', error);
-    return generateRealDataFallback(session, averageScore);
+    console.error('❌ OpenAI Feedback Error:');
+    console.error('Type:', error.constructor.name);
+    console.error('Message:', error.message);
+    console.error('Code:', error.code);
+    console.error('Status:', error.status);
+    
+    // Don't fall back - throw the error so we can see what's wrong
+    throw new Error(`Feedback generation failed: ${error.message}`);
   }
 }
 
-// ✨ NEW: Fallback that uses real session data instead of hardcoded values
+// ✅ COMMENTED OUT: Fallback functions to force real issues to surface
+/*
 function generateRealDataFallback(session, averageScore) {
   const answersCount = session.answers?.length || 0;
   const expectedQuestions = session.questions?.length || 15;
@@ -2708,8 +2703,10 @@ function generateRealDataFallback(session, averageScore) {
     }`
   };
 }
+*/
 
 // ✨ NEW: Basic feedback for when no substantial answers were given
+/*
 function generateBasicCompletionFeedback(session) {
   return {
     overallScore: 5,
@@ -2727,19 +2724,30 @@ function generateBasicCompletionFeedback(session) {
     actionPlan: 'Try a full interview session to get comprehensive feedback on your skills.'
   };
 }
+*/
 
+// ✨ ENHANCED: Generate feedback based on conversational interview with OpenAI
 // ✨ ENHANCED: Generate feedback based on conversational interview with OpenAI
 async function generateConversationalFeedback(session, conversationMemory) {
   console.log('=== generateConversationalFeedback called ===');
-  console.log(`Generating feedback for ${conversationMemory.userResponses?.length || 0} responses across ${conversationMemory.topicsDiscussed?.length || 0} topics`);
+  console.log(`📊 Generating feedback for ${conversationMemory.userResponses?.length || 0} responses across ${conversationMemory.topicsDiscussed?.length || 0} topics`);
   
   try {
     // ✅ CRITICAL: Always try OpenAI first
     if (!process.env.OPENAI_API_KEY) {
+      console.error('❌ No OpenAI API key found!');
       throw new Error('OpenAI required for personalized feedback');
     }
 
-    const systemPrompt = `You are an expert interviewer providing comprehensive final feedback based on the actual interview conversation.
+    console.log('📡 Making OpenAI request for conversational feedback...');
+    console.log('🔑 API Key available:', !!process.env.OPENAI_API_KEY);
+    console.log('📝 Conversation data:', {
+      responses: conversationMemory.userResponses?.length || 0,
+      topics: conversationMemory.topicsDiscussed?.length || 0,
+      jobTitle: session.jobTitle || 'Unknown'
+    });
+
+    const systemPrompt = `You are an expert interviewer providing comprehensive final feedback.
 
 INTERVIEW CONTEXT:
 - Role: ${session.jobTitle || 'Technical Role'} at ${session.company || 'Company'}
@@ -2752,26 +2760,26 @@ ${conversationMemory.userResponses?.map((r, i) =>
   `Response ${i+1} (${r.topic}): "${r.response.substring(0, 100)}..."`
 ).join('\n') || 'No responses recorded'}
 
-Based on this REAL conversation, provide comprehensive feedback in JSON format:
+Based on this REAL conversation, provide VARIED and REALISTIC feedback in JSON format:
 {
-  "overallScore": 8,
+  "overallScore": [REALISTIC_SCORE_4_TO_9_BASED_ON_ACTUAL_PERFORMANCE],
   "summary": "Detailed assessment based on actual responses and job requirements",
   "categories": [
     {
       "name": "Technical Knowledge",
-      "score": 8,
+      "score": [VARIED_SCORE_BASED_ON_ACTUAL_TECHNICAL_RESPONSES],
       "feedback": "Specific feedback based on actual technical discussions",
       "suggestions": ["Specific improvements based on actual responses"]
     },
     {
       "name": "Communication",
-      "score": 7,
+      "score": [DIFFERENT_SCORE_BASED_ON_COMMUNICATION_QUALITY],
       "feedback": "Assessment of actual communication during interview",
       "suggestions": ["Communication improvements based on actual performance"]
     },
     {
       "name": "Job Fit",
-      "score": 8,
+      "score": [ANOTHER_VARIED_SCORE_BASED_ON_JOB_RELEVANCE],
       "feedback": "How well responses align with job requirements",
       "suggestions": ["Job-specific suggestions based on requirements analysis"]
     }
@@ -2781,27 +2789,50 @@ Based on this REAL conversation, provide comprehensive feedback in JSON format:
   "actionPlan": "Realistic next steps based on actual interview performance"
 }
 
-Base everything on the ACTUAL conversation content and job requirements.`;
+CRITICAL: 
+- Base ALL scores on the ACTUAL conversation content
+- VARY the scores realistically (don't make them all the same)
+- Use the actual technical content mentioned (.NET, ASP.NET Core, Entity Framework, etc.)
+- Reference specific examples from the responses
+- Make scores different from each other`;
 
+    console.log('🚀 Sending request to OpenAI...');
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: "Generate comprehensive feedback based on the interview data provided." }
       ],
-      temperature: 0.3,
+      temperature: 0.7, // Higher temperature for more variation
       max_tokens: 2000,
       response_format: { type: "json_object" }
     });
 
+    console.log('✅ OpenAI response received successfully');
     const content = response.choices[0].message.content;
+    console.log('📋 Raw OpenAI feedback response length:', content.length);
+    console.log('📋 First 300 chars:', content.substring(0, 300) + '...');
+    
     const feedback = JSON.parse(content);
     
-    console.log('✅ OpenAI generated personalized final feedback');
+    console.log('🎯 Parsed feedback scores:', {
+      overall: feedback.overallScore,
+      technical: feedback.categories?.[0]?.score,
+      communication: feedback.categories?.[1]?.score,
+      jobFit: feedback.categories?.[2]?.score
+    });
+    
+    console.log('✅ OpenAI generated personalized final feedback with varied scores');
     return feedback;
     
   } catch (error) {
-    console.error('❌ OpenAI failed for final feedback:', error);
+    console.error('❌ OpenAI failed for final feedback:');
+    console.error('Error type:', error.constructor.name);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Error status:', error.status);
+    console.error('Full error:', error);
+    
     console.log('🔄 Using enhanced fallback with conversation data');
     
     // Enhanced fallback that uses actual conversation data
@@ -3916,6 +3947,37 @@ app.use((err, req, res, next) => {
     message: 'Something went wrong!',
     error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
   });
+});
+
+// ✅ NEW: Test endpoint to verify OpenAI connectivity
+app.get('/api/test-openai', async (req, res) => {
+  console.log('=== OpenAI Test Endpoint ===');
+  console.log('API Key exists:', !!process.env.OPENAI_API_KEY);
+  console.log('API Key length:', process.env.OPENAI_API_KEY?.length || 0);
+  
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: "Say 'Hello from OpenAI!' in exactly 3 words." }],
+      max_tokens: 10,
+      temperature: 0
+    });
+    
+    console.log('✅ OpenAI test successful');
+    res.json({ 
+      success: true, 
+      message: response.choices[0].message.content,
+      model: "gpt-3.5-turbo"
+    });
+  } catch (error) {
+    console.error('❌ OpenAI test failed:', error.message);
+    res.json({ 
+      success: false, 
+      error: error.message,
+      code: error.code,
+      type: error.type
+    });
+  }
 });
 
 // 404 handler
