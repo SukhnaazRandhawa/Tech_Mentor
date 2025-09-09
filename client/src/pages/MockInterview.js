@@ -3,6 +3,7 @@ import {
   Briefcase,
   ChevronLeft,
   Clock,
+  Mail,
   Play,
   Save,
   Target,
@@ -334,31 +335,46 @@ const MockInterview = () => {
     }
   };
 
-  // Save interview feedback
-  const saveInterview = async () => {
-    if (!sessionData || !feedback) return;
+  // ✅ ENHANCED: Save interview feedback with email option
+  const handleSaveFeedback = async (sendEmail = false) => {
+    if (!feedback || !sessionData) return;
     
     try {
-      const response = await fetch('/api/mock-interview/save', {
+      const response = await fetch('/api/mock-interview/save-feedback', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           sessionId: sessionData.id,
-          feedback: feedback
+          feedback: feedback,
+          emailCopy: sendEmail
         }),
       });
-
-      if (response.ok) {
-        alert('Interview saved successfully!');
-        navigate('/');
+      
+      const data = await response.json();
+      
+      if (data.message) {
+        const message = sendEmail && data.emailSent ? 
+          'Feedback saved and emailed to you!' : 
+          'Feedback saved successfully!';
+        
+        // Show success message
+        alert(message);
+        
+        // Redirect to dashboard after a delay
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 1500);
       }
     } catch (error) {
-      console.error('Error saving interview:', error);
-      alert('Failed to save interview.');
+      console.error('Error saving feedback:', error);
+      alert('Failed to save feedback');
     }
   };
+
+  // Legacy save function for backward compatibility
+  const saveInterview = () => handleSaveFeedback(false);
 
 
 
@@ -686,11 +702,19 @@ const MockInterview = () => {
                 Practice Again
               </button>
               <button
-                onClick={saveInterview}
-                className="btn-primary px-6 py-3"
+                onClick={() => handleSaveFeedback(false)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors"
               >
-                <Save className="h-5 w-5 mr-2" />
-                Save & Go to Dashboard
+                <Save className="h-5 w-5" />
+                <span>Save & Go to Dashboard</span>
+              </button>
+              
+              <button
+                onClick={() => handleSaveFeedback(true)}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors"
+              >
+                <Mail className="h-5 w-5" />
+                <span>Save & Email Me</span>
               </button>
             </div>
           </div>

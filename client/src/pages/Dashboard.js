@@ -1,13 +1,13 @@
 import {
-  ArrowRight,
-  BookOpen,
-  Briefcase,
-  CheckCircle,
-  Clock,
-  MessageSquare,
-  Play,
-  Target,
-  TrendingUp
+    ArrowRight,
+    BookOpen,
+    Briefcase,
+    CheckCircle,
+    Clock,
+    MessageSquare,
+    Play,
+    Target,
+    TrendingUp
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -23,6 +23,7 @@ const Dashboard = () => {
   const [recentSessions, setRecentSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardSkills, setDashboardSkills] = useState([]);
+  const [savedInterviews, setSavedInterviews] = useState([]);
 
   // Fetch dashboard data from backend
   useEffect(() => {
@@ -145,6 +146,18 @@ const Dashboard = () => {
         } catch (error) {
           console.error('Error loading skills from backend:', error);
           setDashboardSkills([]);
+        }
+        
+        // Fetch saved interviews
+        try {
+          const interviewsResponse = await fetchWithRetry('/api/mock-interview/saved');
+          if (interviewsResponse.ok) {
+            const interviewsData = await interviewsResponse.json();
+            setSavedInterviews(interviewsData.interviews || []);
+          }
+        } catch (error) {
+          console.error('Error loading saved interviews:', error);
+          setSavedInterviews([]);
         }
         
       } catch (error) {
@@ -635,6 +648,80 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Saved Interview Feedback */}
+      {savedInterviews.length > 0 && (
+        <div className="mt-8">
+          <div className="card">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-secondary-900">Recent Interview Feedback</h2>
+              <span className="text-sm text-secondary-500">{savedInterviews.length} saved</span>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {savedInterviews.slice(0, 6).map((interview) => (
+                <div key={interview.id} className="bg-secondary-50 rounded-lg p-4 border border-secondary-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-medium text-secondary-900 text-sm">
+                      {interview.jobTitle}
+                    </h3>
+                    <span className="text-xs text-secondary-500">
+                      {new Date(interview.date).toLocaleDateString()}
+                    </span>
+                  </div>
+                  
+                  <p className="text-xs text-secondary-600 mb-2">
+                    {interview.company} • {interview.duration} min
+                  </p>
+                  
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-1">
+                      <span className="text-lg font-bold text-primary-600">
+                        {interview.overallScore}/10
+                      </span>
+                      <span className="text-xs text-secondary-500">Overall</span>
+                    </div>
+                    
+                    <div className="text-xs text-secondary-500">
+                      {interview.categories?.length || 0} categories
+                    </div>
+                  </div>
+                  
+                  <div className="text-xs text-secondary-600 line-clamp-2">
+                    {interview.summary?.substring(0, 80)}...
+                  </div>
+                  
+                  <div className="mt-3 flex space-x-2">
+                    <button 
+                      onClick={() => navigate('/mock-interview')}
+                      className="text-xs bg-primary-100 text-primary-700 px-2 py-1 rounded hover:bg-primary-200 transition-colors"
+                    >
+                      View Details
+                    </button>
+                    <button 
+                      onClick={() => navigate('/mock-interview')}
+                      className="text-xs bg-secondary-100 text-secondary-700 px-2 py-1 rounded hover:bg-secondary-200 transition-colors"
+                    >
+                      Practice Again
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {savedInterviews.length > 6 && (
+              <div className="mt-4 text-center">
+                <button 
+                  onClick={() => navigate('/mock-interview')}
+                  className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  View All Saved Interviews →
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Stats Overview */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">

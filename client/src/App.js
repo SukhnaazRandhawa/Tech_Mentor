@@ -29,6 +29,12 @@ function App() {
                     <Dashboard />
                   </PrivateRoute>
                 } />
+                {/* ✅ ADD MISSING DASHBOARD ROUTE */}
+                <Route path="/dashboard" element={
+                  <PrivateRoute>
+                    <Dashboard />
+                  </PrivateRoute>
+                } />
                 <Route path="/tutoring" element={
                   <PrivateRoute>
                     <TutoringSession />

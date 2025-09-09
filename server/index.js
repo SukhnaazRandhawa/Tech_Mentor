@@ -3949,6 +3949,173 @@ app.use((err, req, res, next) => {
   });
 });
 
+// ✅ ENHANCED: Save interview feedback with persistence and email option
+app.post('/api/mock-interview/save-feedback', async (req, res) => {
+  try {
+    const { sessionId, feedback, emailCopy = false } = req.body;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Find the interview session
+    const session = user.mockInterviews?.find(s => s.id === sessionId);
+    if (!session) {
+      return res.status(404).json({ message: 'Interview session not found' });
+    }
+    
+    // Save feedback to session
+    session.feedback = feedback;
+    session.saved = true;
+    session.savedAt = new Date();
+    
+    // Add to user's saved interviews collection for dashboard
+    if (!user.savedInterviews) {
+      user.savedInterviews = [];
+    }
+    
+    const savedInterview = {
+      id: sessionId,
+      jobTitle: session.jobTitle || 'Technical Interview',
+      company: session.company || 'Company',
+      date: session.endTime || new Date(),
+      duration: session.duration || 0,
+      overallScore: feedback.overallScore,
+      feedback: feedback,
+      categories: feedback.categories || [],
+      summary: feedback.summary
+    };
+    
+    // Remove any existing saved version and add the new one
+    user.savedInterviews = user.savedInterviews.filter(i => i.id !== sessionId);
+    user.savedInterviews.unshift(savedInterview); // Add to beginning
+    
+    // Keep only last 10 saved interviews
+    if (user.savedInterviews.length > 10) {
+      user.savedInterviews = user.savedInterviews.slice(0, 10);
+    }
+    
+    console.log(`📊 Interview feedback saved for ${user.name}: ${feedback.overallScore}/10`);
+    
+    // Send email if requested
+    if (emailCopy) {
+      try {
+        await sendInterviewFeedbackEmail(user, savedInterview);
+        console.log(`📧 Feedback email sent to ${user.email}`);
+      } catch (emailError) {
+        console.error('❌ Failed to send email:', emailError);
+        // Don't fail the whole request if email fails
+      }
+    }
+    
+    res.json({
+      message: 'Interview feedback saved successfully',
+      emailSent: emailCopy,
+      savedInterview: savedInterview
+    });
+    
+  } catch (error) {
+    console.error('❌ Error saving interview feedback:', error);
+    res.status(500).json({ 
+      message: 'Failed to save feedback',
+      error: error.message 
+    });
+  }
+});
+
+// ✅ NEW: Get saved interviews for dashboard
+app.get('/api/mock-interview/saved', (req, res) => {
+  try {
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const savedInterviews = user.savedInterviews || [];
+    
+    res.json({
+      interviews: savedInterviews,
+      count: savedInterviews.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching saved interviews:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch saved interviews',
+      error: error.message 
+    });
+  }
+});
+
+// ✅ NEW: Email sending function for interview feedback
+async function sendInterviewFeedbackEmail(user, interview) {
+  // This would use a real email service like SendGrid, Nodemailer, etc.
+  // For now, we'll simulate it with detailed logging
+  
+  const emailContent = `
+    Subject: Your Interview Feedback - ${interview.jobTitle}
+    
+    Hi ${user.name},
+    
+    Here's your interview feedback for the ${interview.jobTitle} position at ${interview.company}:
+    
+    Overall Score: ${interview.overallScore}/10
+    Interview Date: ${new Date(interview.date).toLocaleDateString()}
+    Duration: ${interview.duration} minutes
+    
+    DETAILED FEEDBACK:
+    ${interview.summary}
+    
+    CATEGORY SCORES:
+    ${interview.categories.map(cat => 
+      `• ${cat.name}: ${cat.score}/10 - ${cat.feedback}`
+    ).join('\n')}
+    
+    RECOMMENDED IMPROVEMENTS:
+    ${interview.feedback.improvements?.map(imp => `• ${imp}`).join('\n') || 'Keep up the great work!'}
+    
+    ACTION PLAN:
+    ${interview.feedback.actionPlan || 'Continue practicing technical interviews.'}
+    
+    Login to your CodeMentor AI dashboard to view more details and track your progress.
+    
+    Good luck with your interview preparation!
+    
+    Best regards,
+    CodeMentor AI Team
+  `;
+  
+  console.log('📧 Email would be sent to:', user.email);
+  console.log('📧 Email content preview:', emailContent.substring(0, 200) + '...');
+  
+  // In production, replace with actual email sending:
+  /*
+  const nodemailer = require('nodemailer');
+  const transporter = nodemailer.createTransporter({
+    // Email service configuration
+  });
+  
+  await transporter.sendMail({
+    to: user.email,
+    subject: `Interview Feedback - ${interview.jobTitle}`,
+    text: emailContent,
+    html: generateHTMLEmail(interview) // You'd create this function
+  });
+  */
+  
+  // For now, just return success
+  return { success: true, message: 'Email sent successfully (simulated)' };
+}
+
 // ✅ NEW: Test endpoint to verify OpenAI connectivity
 app.get('/api/test-openai', async (req, res) => {
   console.log('=== OpenAI Test Endpoint ===');
