@@ -1,13 +1,13 @@
 import {
-    ArrowRight,
-    BookOpen,
-    Briefcase,
-    CheckCircle,
-    Clock,
-    MessageSquare,
-    Play,
-    Target,
-    TrendingUp
+  ArrowRight,
+  BookOpen,
+  Briefcase,
+  CheckCircle,
+  Clock,
+  MessageSquare,
+  Play,
+  Target,
+  TrendingUp
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -693,7 +693,7 @@ const Dashboard = () => {
                   
                   <div className="mt-3 flex space-x-2">
                     <button 
-                      onClick={() => navigate('/mock-interview')}
+                      onClick={() => navigate(`/interview-feedback/${interview.id}`)}
                       className="text-xs bg-primary-100 text-primary-700 px-2 py-1 rounded hover:bg-primary-200 transition-colors"
                     >
                       View Details

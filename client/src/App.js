@@ -6,6 +6,7 @@ import Navbar from './components/layout/Navbar';
 import { AuthProvider } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
 import Dashboard from './pages/Dashboard';
+import InterviewFeedback from './pages/InterviewFeedback';
 import JobPreparation from './pages/JobPreparation';
 import Login from './pages/Login';
 import MockInterview from './pages/MockInterview';
@@ -58,6 +59,11 @@ function App() {
                 <Route path="/profile" element={
                   <PrivateRoute>
                     <Profile />
+                  </PrivateRoute>
+                } />
+                <Route path="/interview-feedback/:interviewId" element={
+                  <PrivateRoute>
+                    <InterviewFeedback />
                   </PrivateRoute>
                 } />
               </Routes>

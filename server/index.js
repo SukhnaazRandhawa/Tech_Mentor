@@ -4056,6 +4056,43 @@ app.get('/api/mock-interview/saved', (req, res) => {
   }
 });
 
+// ✅ NEW: Get individual feedback by ID
+app.get('/api/mock-interview/feedback/:interviewId', (req, res) => {
+  try {
+    const { interviewId } = req.params;
+    
+    if (!currentUserEmail) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    const user = userDatabase.get(currentUserEmail);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // First, try to find in saved interviews
+    const savedInterview = user.savedInterviews?.find(i => i.id === interviewId);
+    if (savedInterview) {
+      return res.json({ feedback: savedInterview.feedback });
+    }
+    
+    // Fallback: try to find in mock interviews (for backward compatibility)
+    const mockInterview = user.mockInterviews?.find(i => i.id === interviewId);
+    if (mockInterview && mockInterview.feedback) {
+      return res.json({ feedback: mockInterview.feedback });
+    }
+    
+    res.status(404).json({ message: 'Feedback not found' });
+    
+  } catch (error) {
+    console.error('❌ Error fetching feedback:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch feedback',
+      error: error.message 
+    });
+  }
+});
+
 // ✅ NEW: Email sending function for interview feedback
 async function sendInterviewFeedbackEmail(user, interview) {
   // This would use a real email service like SendGrid, Nodemailer, etc.
