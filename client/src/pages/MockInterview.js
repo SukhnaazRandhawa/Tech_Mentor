@@ -1,13 +1,12 @@
 import {
-    BarChart3,
-    Briefcase,
-    ChevronLeft,
-    Clock,
-    Mail,
-    Play,
-    Save,
-    Target,
-    TrendingUp
+  BarChart3,
+  Briefcase,
+  ChevronLeft,
+  Clock,
+  Mail,
+  Play,
+  Save,
+  Target
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -460,8 +459,8 @@ const MockInterview = () => {
           </div>
         </div>
 
-        {/* Quick Stats */}
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* Simplified Stats - Only 2 meaningful metrics */}
+        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
           <div className="card text-center">
             <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg mx-auto mb-3">
               <BarChart3 className="h-6 w-6 text-blue-600" />
@@ -470,26 +469,6 @@ const MockInterview = () => {
               {String(interviewStats?.totalInterviews || 0)}
             </h3>
             <p className="text-sm text-secondary-600">Total Interviews</p>
-          </div>
-          
-          <div className="card text-center">
-            <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-lg mx-auto mb-3">
-              <TrendingUp className="h-6 w-6 text-green-600" />
-            </div>
-            <h3 className="text-2xl font-bold text-secondary-900 mb-1">
-              {String(interviewStats?.averageScore || 0)}%
-            </h3>
-            <p className="text-sm text-secondary-600">Average Score</p>
-          </div>
-          
-          <div className="card text-center">
-            <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-lg mx-auto mb-3">
-              <Target className="h-6 w-6 text-purple-600" />
-            </div>
-            <h3 className="text-2xl font-bold text-secondary-900 mb-1">
-              {String(interviewStats?.questionsAnswered || 0)}
-            </h3>
-            <p className="text-sm text-secondary-600">Questions Answered</p>
           </div>
           
           <div className="card text-center">

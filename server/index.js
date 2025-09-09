@@ -1478,7 +1478,7 @@ app.get('/api/mock-interview/history', async (req, res) => {
   }
 });
 
-// Get interview statistics
+// Get interview statistics - SIMPLIFIED VERSION
 app.get('/api/mock-interview/stats', async (req, res) => {
   try {
     if (!currentUserEmail) {
@@ -1493,24 +1493,17 @@ app.get('/api/mock-interview/stats', async (req, res) => {
     const interviews = user.mockInterviews || [];
     const completedInterviews = interviews.filter(i => i.status === 'completed');
     
+    // ✅ SIMPLIFIED: Only keep meaningful, straightforward metrics
     const stats = {
       totalInterviews: interviews.length,
       completedInterviews: completedInterviews.length,
-      averageScore: completedInterviews.length > 0 
-        ? Math.round(completedInterviews.reduce((sum, i) => sum + (i.scores?.reduce((s, score) => s + score, 0) || 0), 0) / completedInterviews.length)
-        : 0,
-      questionsAnswered: interviews.reduce((sum, i) => sum + (i.answers?.length || 0), 0),
-      totalTime: interviews.reduce((sum, i) => sum + (i.duration || 0), 0),
-      modeBreakdown: {}
+      totalTime: interviews.reduce((sum, i) => sum + (i.duration || 0), 0)
+      // ❌ REMOVED: averageScore (complex with different interview types)
+      // ❌ REMOVED: questionsAnswered (not meaningful with conversational format)
+      // ❌ REMOVED: modeBreakdown (unnecessary complexity)
     };
     
-    // Calculate mode breakdown
-    interviews.forEach(interview => {
-      if (!stats.modeBreakdown[interview.mode]) {
-        stats.modeBreakdown[interview.mode] = 0;
-      }
-      stats.modeBreakdown[interview.mode]++;
-    });
+    console.log('📊 Simplified interview stats:', stats);
     
     res.json({
       stats: stats
