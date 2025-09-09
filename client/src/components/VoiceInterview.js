@@ -479,6 +479,9 @@ const VoiceInterview = ({
   // ✨ ENHANCED: Generate feedback with comprehensive session handling
 const generateInterviewFeedback = async () => {
   try {
+    // ✅ STOP AI SPEAKING IMMEDIATELY
+    stopAISpeaking();
+    
     console.log('📊 Requesting final feedback generation...');
     
     // Use stored session data if current session is lost
@@ -552,6 +555,7 @@ const generateInterviewFeedback = async () => {
     
   } catch (error) {
     console.error('❌ Error in feedback generation:', error);
+    stopAISpeaking(); // Also stop on error
     const emergencyFeedback = generateEmergencyFeedback(conversationMemory || conversationMemoryRef.current);
     onInterviewEnd(emergencyFeedback);
   }
@@ -728,6 +732,14 @@ const generateEmergencyFeedback = (memory) => {
       synthesisRef.current.speak(utterance);
     }
   };
+
+  // ✅ NEW: Add function to stop AI speaking
+  const stopAISpeaking = () => {
+    if (synthesisRef.current) {
+      synthesisRef.current.cancel(); // Stop any ongoing speech
+      setInterviewerSpeaking(false);
+    }
+  };
   
   //const hasGreetingBeenSpokenRef = useRef(false);
   // ✨ NEW: Add greeting function
@@ -885,7 +897,10 @@ const generateEmergencyFeedback = (memory) => {
           </div>
           
           <button
-            onClick={onInterviewEnd}
+            onClick={() => {
+              stopAISpeaking(); // Stop AI speaking immediately
+              onInterviewEnd(); // Then end the interview
+            }}
             className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
           >
             <Square className="h-4 w-4" />

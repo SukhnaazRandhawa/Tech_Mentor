@@ -1269,20 +1269,22 @@ app.post('/api/mock-interview/end', async (req, res) => {
     // ✨ ENHANCED: Generate feedback based on available data
     let finalFeedback;
     
-    if (earlyTermination) {
-      // Generate early termination feedback
-      console.log(`⚠️ Generating early termination feedback for ${conversationMemory?.userResponses?.length || 0} responses`);
+    const responseCount = conversationMemory?.userResponses?.length || 0;
+    const minimumForMeaningfulFeedback = 8;
+    
+    // Determine if this is actually an early termination
+    const isActuallyEarlyTermination = responseCount < minimumForMeaningfulFeedback;
+    
+    if (earlyTermination || isActuallyEarlyTermination) {
+      // Don't generate complex feedback for early termination
+      console.log(`⚠️ Early termination detected: ${responseCount} responses (minimum: ${minimumForMeaningfulFeedback})`);
       finalFeedback = {
-        overallScore: null, // No score for incomplete interviews
-        incomplete: true,
-        summary: `Interview ended after ${conversationMemory?.userResponses?.length || 0} responses. Complete interviews provide more comprehensive feedback.`,
         earlyTermination: true,
-        recommendation: "Try completing a full interview session to receive detailed performance analysis.",
-        nextSteps: [
-          "Schedule another interview when you have more time",
-          "Complete at least 8-10 questions for meaningful feedback",
-          "Practice answering questions fully before ending early"
-        ]
+        incomplete: true,
+        overallScore: null,
+        responseCount: responseCount,
+        summary: `Interview ended after ${responseCount} responses. Complete interviews (8+ responses) provide detailed performance analysis.`,
+        message: "Complete the full interview to receive comprehensive feedback on your technical skills."
       };
     } else if (conversationMemory?.userResponses?.length > 0) {
       // Use conversation-based feedback generation
@@ -1312,7 +1314,7 @@ app.post('/api/mock-interview/end', async (req, res) => {
     });
     
     res.json({
-      message: earlyTermination ? 'Interview ended early' : 'Interview completed',
+      message: (earlyTermination || isActuallyEarlyTermination) ? 'Interview ended early' : 'Interview completed',
       feedback: finalFeedback
     });
     

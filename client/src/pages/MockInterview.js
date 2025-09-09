@@ -1,13 +1,13 @@
 import {
-  BarChart3,
-  Briefcase,
-  ChevronLeft,
-  Clock,
-  Mail,
-  Play,
-  Save,
-  Target,
-  TrendingUp
+    BarChart3,
+    Briefcase,
+    ChevronLeft,
+    Clock,
+    Mail,
+    Play,
+    Save,
+    Target,
+    TrendingUp
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -340,6 +340,20 @@ const MockInterview = () => {
     if (!feedback || !sessionData) return;
     
     try {
+      // ✅ FIXED: Clean the feedback object to remove any circular references
+      const cleanFeedback = {
+        overallScore: feedback.overallScore,
+        summary: feedback.summary,
+        categories: feedback.categories,
+        strengths: feedback.strengths,
+        improvements: feedback.improvements,
+        actionPlan: feedback.actionPlan,
+        earlyTermination: feedback.earlyTermination,
+        incomplete: feedback.incomplete,
+        responseCount: feedback.responseCount,
+        // Don't include any other properties that might have circular refs
+      };
+
       const response = await fetch('/api/mock-interview/save-feedback', {
         method: 'POST',
         headers: {
@@ -347,14 +361,14 @@ const MockInterview = () => {
         },
         body: JSON.stringify({
           sessionId: sessionData.id,
-          feedback: feedback,
+          feedback: cleanFeedback, // Use cleaned version
           emailCopy: sendEmail
         }),
       });
       
       const data = await response.json();
       
-      if (data.message) {
+      if (response.ok) {
         const message = sendEmail && data.emailSent ? 
           'Feedback saved and emailed to you!' : 
           'Feedback saved successfully!';
@@ -366,10 +380,12 @@ const MockInterview = () => {
         setTimeout(() => {
           navigate('/dashboard');
         }, 1500);
+      } else {
+        throw new Error(data.message || 'Failed to save feedback');
       }
     } catch (error) {
       console.error('Error saving feedback:', error);
-      alert('Failed to save feedback');
+      alert('Failed to save feedback: ' + error.message);
     }
   };
 
@@ -560,8 +576,12 @@ const MockInterview = () => {
 
   // Render feedback screen
   if (activeTab === 'feedback') {
+    // Check if this is an early termination with minimal responses
+    const hasMinimalResponses = conversationMemory?.interviewProgress < 3;
+    const isEarlyTermination = feedback?.earlyTermination || hasMinimalResponses;
+
     // Show early termination screen if interview was ended early
-    if (feedback?.incomplete && feedback?.earlyTermination) {
+    if (isEarlyTermination) {
       return (
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center mb-8">
@@ -583,38 +603,45 @@ const MockInterview = () => {
             </h2>
             
             <p className="text-secondary-600 mb-6">
-              {feedback.summary}
+              You ended the interview after only {conversationMemory?.interviewProgress || 0} responses. 
+              Our AI needs at least 8-10 responses to provide meaningful feedback on your technical skills.
             </p>
             
             <p className="text-secondary-700 mb-6">
-              {feedback.recommendation}
+              Complete the full interview to receive comprehensive feedback on your performance.
             </p>
 
             {/* Next Steps */}
-            <div className="bg-secondary-50 rounded-lg p-6 mb-6 text-left">
-              <h3 className="font-semibold text-secondary-900 mb-3">To get comprehensive feedback:</h3>
+            <div className="bg-blue-50 rounded-lg p-6 mb-6 text-left">
+              <h3 className="font-semibold text-secondary-900 mb-3">💡 To get comprehensive feedback:</h3>
               <ul className="space-y-2">
-                {feedback.nextSteps?.map((step, idx) => (
-                  <li key={idx} className="flex items-start">
-                    <Target className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
-                    <span className="text-secondary-700">{step}</span>
-                  </li>
-                ))}
+                <li className="flex items-start">
+                  <Target className="h-4 w-4 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                  <span className="text-secondary-700">Answer at least 8-10 questions completely</span>
+                </li>
+                <li className="flex items-start">
+                  <Target className="h-4 w-4 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                  <span className="text-secondary-700">Provide detailed technical explanations</span>
+                </li>
+                <li className="flex items-start">
+                  <Target className="h-4 w-4 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                  <span className="text-secondary-700">Complete the full interview session</span>
+                </li>
               </ul>
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons - NO SAVE OPTIONS */}
             <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-6">
               <button
                 onClick={() => setActiveTab('start')}
                 className="btn-primary flex items-center justify-center px-8 py-3 text-lg"
               >
                 <Play className="h-5 w-5 mr-2" />
-                Try Complete Interview
+                Start Complete Interview
               </button>
               
               <button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/dashboard')}
                 className="btn-secondary flex items-center justify-center px-8 py-3 text-lg"
               >
                 Back to Dashboard
