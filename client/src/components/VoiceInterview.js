@@ -960,18 +960,6 @@ const generateEmergencyFeedback = (memory) => {
                 )}
                 
                 {/* ✨ NEW: Greeting Phase Indicator */}
-                {interviewPhase === 'greeting' && (
-                  <div className="bg-blue-600 text-white px-4 py-2 rounded-lg text-center">
-                    <div className="flex items-center justify-center space-x-2">
-                      <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
-                      <span className="font-medium">
-                        {isWaitingForUserResponse ? 
-                          'Tell me when you\'re ready to start!' : 
-                          'AI is introducing the interview...'}
-                      </span>
-                    </div>
-                  </div>
-                )}
                 
                 {/* ✨ NEW: Conversation Progress Indicator */}
                 {interviewPhase === 'questioning' && isInConversation && (
@@ -1179,9 +1167,7 @@ const generateEmergencyFeedback = (memory) => {
         <div className="text-center mt-3">
           <p className="text-sm text-gray-400">
             {interviewPhase === 'greeting' ? (
-              isWaitingForUserResponse ? 
-                'Tell me when you\'re ready to start the interview' : 
-                'AI is introducing the interview...'
+              'AI is introducing the interview...'
             ) : interviewPhase === 'questioning' ? (
               isListening ? 'Click the red button to stop recording' : 
               isProcessing ? 'AI is analyzing your response...' : 
