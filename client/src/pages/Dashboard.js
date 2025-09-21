@@ -6,8 +6,7 @@ import {
   Clock,
   MessageSquare,
   Play,
-  Target,
-  TrendingUp
+  Target
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -49,17 +48,6 @@ const Dashboard = () => {
             throw error;
           }
         };
-
-        // Fetch recent activity
-        try {
-          const activityResponse = await fetchWithRetry('/api/dashboard/recent-activity');
-          if (activityResponse.ok) {
-            const activityData = await activityResponse.json();
-            setRecentActivity(activityData.activities);
-          }
-        } catch (error) {
-          console.error('Error fetching recent activity:', error);
-        }
         
         // Fetch today's goal
         try {
@@ -174,7 +162,6 @@ const Dashboard = () => {
         {
           id: 1,
           type: 'lesson',
-          title: 'No recent activity',
           timestamp: 'Start learning to see activity here',
           icon: CheckCircle,
           color: 'text-secondary-500'
@@ -521,52 +508,8 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Recent Activity & Tutoring Sessions */}
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Recent Activity */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-secondary-900">Recent Activity</h2>
-            <Link to="/profile" className="text-primary-600 hover:text-primary-700 text-sm font-medium">
-              View All
-            </Link>
-          </div>
-          
-          <div className="space-y-4">
-            {recentActivity.map((activity) => {
-              // Map icon names to icon components
-              const getIconComponent = (iconName) => {
-                switch (iconName) {
-                  case 'CheckCircle':
-                    return CheckCircle;
-                  case 'Briefcase':
-                    return Briefcase;
-                  case 'BookOpen':
-                    return BookOpen;
-                  case 'MessageSquare':
-                    return MessageSquare;
-                  default:
-                    return CheckCircle;
-                }
-              };
-              
-              const Icon = getIconComponent(activity.icon);
-              return (
-                <div key={activity.id} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-secondary-50 transition-colors">
-                  <div className={`p-2 rounded-full bg-secondary-100`}>
-                    <Icon className={`h-4 w-4 ${activity.color}`} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-secondary-900">{activity.title}</p>
-                    <p className="text-xs text-secondary-500">{activity.timestamp}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        
-        {/* Recent Tutoring Sessions */}
+      {/* Recent Tutoring Sessions */}
+      <div className="mt-8">
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-secondary-900">Recent Tutoring Sessions</h2>
@@ -725,25 +668,7 @@ const Dashboard = () => {
 
       {/* Stats Overview */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card text-center">
-          <div className="flex items-center justify-center w-12 h-12 bg-primary-100 rounded-lg mx-auto mb-3">
-            <BookOpen className="h-6 w-6 text-primary-600" />
-          </div>
-          <h3 className="text-2xl font-bold text-secondary-900 mb-1">
-            {recentSessions.filter(s => s.status === 'completed').length}
-          </h3>
-          <p className="text-sm text-secondary-600">Lessons Completed</p>
-        </div>
-        
-        <div className="card text-center">
-          <div className="flex items-center justify-center w-12 h-12 bg-accent-100 rounded-lg mx-auto mb-3">
-            <TrendingUp className="h-6 w-6 text-accent-600" />
-          </div>
-          <h3 className="text-2xl font-bold text-secondary-900 mb-1">
-            {stats.overallProgress || 0}%
-          </h3>
-          <p className="text-sm text-secondary-600">Overall Progress</p>
-        </div>
+
         
         <div className="card text-center">
           <div className="flex items-center justify-center w-12 h-12 bg-secondary-100 rounded-lg mx-auto mb-3">

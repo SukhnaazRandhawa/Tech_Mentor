@@ -1939,21 +1939,6 @@ app.post('/api/job-prep/update-progress', async (req, res) => {
 });
 
 // Dynamic Dashboard API endpoints
-app.get('/api/dashboard/recent-activity', (req, res) => {
-  console.log('Fetch recent activity request');
-  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
-  if (!user) return res.json({ activities: [] });
-  const activities = user.activityLog.slice(-5).reverse().map(activity => ({
-    id: activity.id || Date.now(),
-    type: activity.type,
-    title: activity.title,
-    timestamp: formatTimestamp(activity.timestamp),
-    icon: getActivityIcon(activity.type),
-    color: getActivityColor(activity.type)
-  }));
-  res.json({ activities: activities.length > 0 ? activities : [] });
-});
-
 app.get('/api/dashboard/today-goal', (req, res) => {
   console.log('Fetch today goal request');
   const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
@@ -1965,69 +1950,6 @@ app.get('/api/dashboard/today-goal', (req, res) => {
   res.json({ goal });
 });
 
-app.get('/api/dashboard/stats', (req, res) => {
-  console.log('Fetch dashboard stats request');
-  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
-  if (!user) {
-    return res.json({ stats: { lessonsCompleted: 0, overallProgress: 0, mockInterviews: 0, jobPreps: 0 } });
-  }
-  const stats = {
-    lessonsCompleted: user.statistics.lessonsCompleted || 0,
-    overallProgress: calculateOverallProgress(user.skillLevels),
-    mockInterviews: user.statistics.interviewsCompleted || 0,
-    jobPreps: user.statistics.jobPrepsCreated || 0
-  };
-  res.json({ stats });
-});
-
-// Add activity endpoint for testing
-app.post('/api/dashboard/add-activity', (req, res) => {
-  console.log('Add activity request:', req.body);
-  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
-  if (!user) return res.status(401).json({ message: 'Please login first' });
-  const { type, title } = req.body;
-  
-  // Add activity to user's log
-  user.activityLog.push({
-    id: Date.now(),
-    type,
-    title,
-    timestamp: new Date()
-  });
-  
-  // Update relevant statistics
-  switch (type) {
-    case 'lesson':
-      user.statistics.lessonsCompleted = (user.statistics.lessonsCompleted || 0) + 1;
-      break;
-    case 'challenge':
-      user.statistics.challengesSolved = (user.statistics.challengesSolved || 0) + 1;
-      break;
-    case 'interview':
-      user.statistics.interviewsCompleted = (user.statistics.interviewsCompleted || 0) + 1;
-      break;
-  }
-  
-  res.json({ message: 'Activity added successfully' });
-});
-
-// Update skill endpoint for testing
-app.post('/api/dashboard/update-skill', (req, res) => {
-  console.log('Update skill request:', req.body);
-  const user = currentUserEmail ? userDatabase.get(currentUserEmail) : null;
-  if (!user) return res.status(401).json({ message: 'Please login first' });
-  const { skill, level } = req.body;
-  
-  if (user.skillLevels[skill]) {
-    user.skillLevels[skill].level = Math.min(Math.max(level, 0), 10);
-    user.skillLevels[skill].lastUpdated = new Date();
-  }
-  
-  res.json({ 
-    message: 'Skill updated successfully',
-    skillLevels: user.skillLevels 
-  });
-});
 
 // Helper functions
 function formatTimestamp(date) {

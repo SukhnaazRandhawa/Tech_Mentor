@@ -681,8 +681,8 @@ const generateEmergencyFeedback = (memory) => {
     improvements: ['Complete longer interview sessions', 'Practice detailed technical explanations'],
     actionPlan: 'Focus on completing full practice interviews to get comprehensive feedback on your technical skills.'
   };
-};
-
+  };
+  
   // Fallback HTTP-based answer processing
   const processAnswer = async (answer) => {
     try {
@@ -761,14 +761,14 @@ const generateEmergencyFeedback = (memory) => {
       covering the ${skillCount} key skills and competencies required for this role, including both technical abilities 
       and behavioral scenarios relevant to your potential responsibilities. 
       
-      The duration will depend on how thoroughly we explore each area - typically 45 to 60 minutes. 
+      The duration will depend on how thoroughly we explore each area - typically 15 to 20 minutes. 
       Are you ready to begin? Please let me know when you're ready to start.`;
     
     speakText(greeting);
     setIsWaitingForUserResponse(true);
     hasGreetingBeenSpokenRef.current = true;
   };
-
+  
   // Speak the current question
   const speakQuestion = (question) => {
     const questionText = `${question.title}. ${question.description}`;
@@ -985,7 +985,7 @@ const generateEmergencyFeedback = (memory) => {
                   </div>
                 )}
                 
-                                {/* Transcript Display */}
+                {/* Transcript Display */}
                 {speechText && (
                   <div className="bg-black bg-opacity-70 text-white px-4 py-3 rounded-lg mt-2">
                     <p className="text-sm">
@@ -1015,17 +1015,17 @@ const generateEmergencyFeedback = (memory) => {
               Interview Conversation
             </h3>
             
-            <div className="space-y-4">
-              <div className="bg-gray-700 p-4 rounded-lg">
-                <h4 className="font-medium text-white mb-2">
+              <div className="space-y-4">
+                <div className="bg-gray-700 p-4 rounded-lg">
+                  <h4 className="font-medium text-white mb-2">
                   Current Topic: {conversationMemory.currentTopic}
-                </h4>
+                  </h4>
                 <p className="text-gray-300 text-sm">
                   Progress: {conversationMemory.interviewProgress}/15 conversation turns
-                </p>
-                
+                  </p>
+                  
                 {/* ✨ NEW: Enhanced topic coverage display */}
-                <div className="mt-3 pt-3 border-t border-gray-600">
+                    <div className="mt-3 pt-3 border-t border-gray-600">
                   <p className="text-xs text-gray-400 mb-1">Topics covered:</p>
                   <div className="flex flex-wrap gap-1">
                     {conversationMemory.topicsDiscussed.map((topic, idx) => (
@@ -1051,21 +1051,21 @@ const generateEmergencyFeedback = (memory) => {
                     </div>
                   )}
                 </div>
-              </div>
-              
+                </div>
+                
               {/* Code Editor Toggle - Keep this for technical interviews */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-400">
-                  {showCodeEditor ? 'Code Editor Active' : 'Add code if needed'}
-                </span>
-                <button
-                  onClick={() => setShowCodeEditor(!showCodeEditor)}
-                  className="bg-gray-600 hover:bg-gray-500 text-white text-sm px-3 py-1 rounded transition-colors"
-                >
-                  {showCodeEditor ? 'Hide Editor' : 'Show Code Editor'}
-                </button>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-400">
+                    {showCodeEditor ? 'Code Editor Active' : 'Add code if needed'}
+                  </span>
+                  <button
+                    onClick={() => setShowCodeEditor(!showCodeEditor)}
+                    className="bg-gray-600 hover:bg-gray-500 text-white text-sm px-3 py-1 rounded transition-colors"
+                  >
+                    {showCodeEditor ? 'Hide Editor' : 'Show Code Editor'}
+                  </button>
+                </div>
               </div>
-            </div>
           </div>
           
           {/* Code Editor */}
@@ -1117,8 +1117,8 @@ const generateEmergencyFeedback = (memory) => {
                   }}
                 />
               </div>
-            </div>
-          )}
+                    </div>
+                  )}
         </div>
       </div>
       
